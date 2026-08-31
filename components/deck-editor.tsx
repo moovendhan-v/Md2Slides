@@ -1596,7 +1596,7 @@ function NewSlidePicker({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4 sm:p-6">
-      <div className="flex h-[88vh] w-full max-w-5xl overflow-hidden rounded-2xl border bg-background shadow-2xl animate-in zoom-in-95 duration-150 flex-col md:flex-row">
+      <div className="flex h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl border bg-background shadow-2xl animate-in zoom-in-95 duration-150 flex-col md:flex-row">
         {/* Categories Sidebar */}
         <div className="flex w-full md:w-56 shrink-0 flex-col border-b md:border-b-0 md:border-r bg-muted/20 p-3">
           <div className="mb-2 px-3 pt-2">
@@ -1676,48 +1676,80 @@ function NewSlidePicker({
           </div>
 
           {/* Templates Grid */}
-          <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 overflow-y-auto p-4 md:p-5">
-            {filtered.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  onPick(t.markdown)
-                  onClose()
-                }}
-                className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all hover:border-primary hover:shadow-lg hover:-translate-y-0.5"
-              >
-                {/* Header Preview */}
-                <div className="flex h-24 items-center justify-between px-4 bg-muted/40 border-b group-hover:bg-primary/5 transition-colors">
-                  <span className="text-3xl">{t.icon}</span>
-                  <Badge variant="outline" className="text-[10px] font-mono tracking-tight bg-background/80">
-                    {t.category}
-                  </Badge>
-                </div>
+          <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-4 md:p-6 bg-muted/10">
+            {filtered.map((t, idx) => {
+              const previewSlide = parseSlides(t.markdown)[0] ?? {
+                id: t.id,
+                title: t.name,
+                body: t.markdown,
+                accent: 'bg-primary',
+                raw: t.markdown,
+              }
 
-                {/* Content Details */}
-                <div className="p-3.5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{t.name}</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">{t.description}</p>
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    onPick(t.markdown)
+                    onClose()
+                  }}
+                  className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20"
+                >
+                  {/* Real Live Mini Slide Preview Thumbnail */}
+                  <div className="relative w-full overflow-hidden border-b bg-background" style={{ aspectRatio: '16/9' }}>
+                    <SlideCard
+                      slide={previewSlide}
+                      index={idx}
+                      ratio="16/9"
+                      fontScale={0.8}
+                      calloutStyle="enterprise"
+                      theme="dark"
+                      className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none select-none"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent opacity-30 group-hover:opacity-0 transition-opacity pointer-events-none" />
+                    <div className="absolute top-2 right-2 z-10">
+                      <Badge variant="outline" className="text-[9px] font-semibold bg-black/75 text-white/90 backdrop-blur-md border-white/20 shadow-sm">
+                        {t.category}
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center text-[10px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                    Click to insert slide →
+
+                  {/* Template Meta Details */}
+                  <div className="p-3.5 flex-1 flex flex-col justify-between bg-card">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base shrink-0">{t.icon}</span>
+                        <p className="text-xs font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                          {t.name}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                        {t.description}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-border/60 text-[10px] font-semibold text-primary">
+                      <span className="text-muted-foreground group-hover:text-primary transition-colors">16:9 layout</span>
+                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        Insert Slide →
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
 
             {filtered.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-                <Search className="size-8 text-muted-foreground/50 mb-2" />
+              <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                <Search className="size-9 text-muted-foreground/40 mb-3" />
                 <p className="text-sm font-semibold">No templates match &quot;{search}&quot;</p>
-                <p className="text-xs text-muted-foreground mt-1">Try another search keyword or select a category.</p>
+                <p className="text-xs text-muted-foreground mt-1">Try searching another keyword (e.g., metric, code, alert, roadmap).</p>
                 <button
                   onClick={() => {
                     setSelectedCat('All (30)')
                     setSearch('')
                   }}
-                  className="mt-4 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                  className="mt-4 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
                 >
                   Reset Filter
                 </button>
