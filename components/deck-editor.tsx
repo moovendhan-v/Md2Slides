@@ -12,12 +12,19 @@ import {
   Menu, MessageSquare, MonitorPlay, Moon, Network, PanelLeft, Pencil, Plus,
   Presentation, Search, Sun, Table2, Type, X, Zap, AlignLeft, AlignCenter,
   AlignRight, Bold, Italic, Minus, ChevronDown, Shield, Check, Sparkles,
-  Layers, Sliders, Palette, RefreshCw, Copy, CheckCheck
+  Layers, Sliders, Palette, RefreshCw, Copy, CheckCheck, Bot, ExternalLink,
+  Eye, FileCode, Terminal
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  CALLOUT_CONFIG,
+  CALLOUT_STYLES,
+  SLIDE_TEMPLATES_SPEC as SLIDE_TEMPLATES,
+  generateLLMsTxt,
+} from '@/lib/deck-spec'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Slide = { id: string; title: string; body: string; accent: string; raw: string }
@@ -54,7 +61,9 @@ export interface SelectedElement {
   imgRadius?: ImgRadius
   imgShadow?: boolean
   calloutVariant?: CalloutVariant
+  calloutStyle?: CalloutStyle
   calloutContent?: string
+  calloutRawDirective?: string
   fontSize?: number
   fontWeight?: number
   align?: 'left' | 'center' | 'right'
@@ -93,123 +102,7 @@ const RATIOS: RatioPreset[] = [
   { key: '1:1',   label: '1 : 1',   ratio: '1/1',    badge: 'Square',     orientation: 'square',    note: 'Social media' },
   { key: '9:16',  label: '9 : 16',  ratio: '9/16',   badge: 'Portrait',   orientation: 'portrait',  note: 'Mobile stories' },
   { key: '3:4',   label: '3 : 4',   ratio: '3/4',    badge: 'Portrait',   orientation: 'portrait',  note: 'Tablet / print' },
-  { key: 'A4',    label: 'A4',      ratio: '210/297', badge: 'A4 PDF',    orientation: 'portrait',  note: 'A4 PDF export' },
 ]
-
-// ─── Callout Configuration (MD -> Docs Enterprise Styles) ────────────────────
-export const CALLOUT_CONFIG: Record<CalloutVariant, {
-  label: string
-  headerTitle: string
-  icon: string
-  color: string
-  borderDark: string
-  borderLight: string
-  bgDark: string
-  bgLight: string
-  badgeBgDark: string
-  badgeBgLight: string
-  badgeTextDark: string
-  badgeTextLight: string
-}> = {
-  note: {
-    label: 'Note',
-    headerTitle: 'Informational Notice',
-    icon: 'ℹ️',
-    color: '#3b82f6',
-    borderDark: 'rgba(59, 130, 246, 0.45)',
-    borderLight: '#93c5fd',
-    bgDark: 'rgba(30, 58, 95, 0.45)',
-    bgLight: '#eff6ff',
-    badgeBgDark: 'rgba(59, 130, 246, 0.25)',
-    badgeBgLight: '#dbeafe',
-    badgeTextDark: '#93c5fd',
-    badgeTextLight: '#1e40af',
-  },
-  important: {
-    label: 'Important',
-    headerTitle: 'Critical Action Required',
-    icon: '🚨',
-    color: '#ef4444',
-    borderDark: 'rgba(239, 68, 68, 0.45)',
-    borderLight: '#fca5a5',
-    bgDark: 'rgba(69, 10, 10, 0.45)',
-    bgLight: '#fef2f2',
-    badgeBgDark: 'rgba(239, 68, 68, 0.25)',
-    badgeBgLight: '#fee2e2',
-    badgeTextDark: '#fca5a5',
-    badgeTextLight: '#991b1b',
-  },
-  tip: {
-    label: 'Pro Tip',
-    headerTitle: 'Best Practice Recommendation',
-    icon: '💡',
-    color: '#10b981',
-    borderDark: 'rgba(16, 185, 129, 0.45)',
-    borderLight: '#6ee7b7',
-    bgDark: 'rgba(6, 78, 59, 0.45)',
-    bgLight: '#ecfdf5',
-    badgeBgDark: 'rgba(16, 185, 129, 0.25)',
-    badgeBgLight: '#d1fae5',
-    badgeTextDark: '#6ee7b7',
-    badgeTextLight: '#065f46',
-  },
-  warning: {
-    label: 'Warning',
-    headerTitle: 'Production Caution',
-    icon: '⚠️',
-    color: '#f59e0b',
-    borderDark: 'rgba(245, 158, 11, 0.45)',
-    borderLight: '#fcd34d',
-    bgDark: 'rgba(69, 26, 3, 0.45)',
-    bgLight: '#fffbeb',
-    badgeBgDark: 'rgba(245, 158, 11, 0.25)',
-    badgeBgLight: '#fef3c7',
-    badgeTextDark: '#fcd34d',
-    badgeTextLight: '#92400e',
-  },
-  info: {
-    label: 'Reference',
-    headerTitle: 'System & Architecture Details',
-    icon: '📋',
-    color: '#06b6d4',
-    borderDark: 'rgba(6, 182, 212, 0.45)',
-    borderLight: '#67e8f9',
-    bgDark: 'rgba(8, 51, 68, 0.45)',
-    bgLight: '#ecfeff',
-    badgeBgDark: 'rgba(6, 182, 212, 0.25)',
-    badgeBgLight: '#cffafe',
-    badgeTextDark: '#67e8f9',
-    badgeTextLight: '#155e75',
-  },
-  security: {
-    label: 'Security & Compliance',
-    headerTitle: 'Security Guardrail & Audit Requirement',
-    icon: '🛡️',
-    color: '#8b5cf6',
-    borderDark: 'rgba(139, 92, 246, 0.45)',
-    borderLight: '#c4b5fd',
-    bgDark: 'rgba(46, 16, 101, 0.45)',
-    bgLight: '#f5f3ff',
-    badgeBgDark: 'rgba(139, 92, 246, 0.25)',
-    badgeBgLight: '#ede9fe',
-    badgeTextDark: '#c4b5fd',
-    badgeTextLight: '#5b21b6',
-  },
-  architecture: {
-    label: 'Architecture Review',
-    headerTitle: 'System Reliability & Service Contract',
-    icon: '🏗️',
-    color: '#14b8a6',
-    borderDark: 'rgba(20, 184, 166, 0.45)',
-    borderLight: '#5eead4',
-    bgDark: 'rgba(4, 47, 46, 0.45)',
-    bgLight: '#f0fdfa',
-    badgeBgDark: 'rgba(20, 184, 166, 0.25)',
-    badgeBgLight: '#ccfbf1',
-    badgeTextDark: '#5eead4',
-    badgeTextLight: '#115e59',
-  },
-}
 
 // ─── Image Markdown Parser & Formatter ───────────────────────────────────────
 export function parseImageParams(rawAlt: string, src: string): ImageAttributes {
@@ -285,274 +178,12 @@ export function formatImageMarkdown(img: ImageAttributes): string {
   return `![${formattedAlt}](${img.src})`
 }
 
-// ─── 30 Rich Per-Slide Templates ─────────────────────────────────────────────
-export interface SlideTemplate {
-  id: string
-  name: string
-  description: string
-  icon: string
-  category: 'Basic' | 'Callouts & Notes' | 'Media & Visuals' | 'Data & Tables' | 'Code & Tech' | 'Lists & Process'
-  markdown: string
-}
-
-export const SLIDE_TEMPLATES: SlideTemplate[] = [
-  // ── 1. Basic & Core (1–4) ──────────────────────────────────────────────────
-  {
-    id: 'blank',
-    name: 'Blank Canvas',
-    description: 'Completely clean slide to write anything from scratch',
-    icon: '⬜',
-    category: 'Basic',
-    markdown: '## New Slide\n\nStart writing your ideas with Markdown...',
-  },
-  {
-    id: 'title-hero',
-    name: 'Title & Hero Subtitle',
-    description: 'Bold presentation opener or keynote title slide',
-    icon: '🎯',
-    category: 'Basic',
-    markdown: '# The Future of High-Velocity Engineering\n\nHow elite technical teams build, test, and ship mission-critical software at scale.',
-  },
-  {
-    id: 'title-lead',
-    name: 'Executive Summary',
-    description: 'Heading with highlighted lead takeaway and context',
-    icon: '📝',
-    category: 'Basic',
-    markdown: '## Executive Overview\n\nOur Q3 initiatives focused on **platform reliability**, reducing deploy times by **64%**, and scaling customer operations without increasing engineering overhead.\n\n- Accelerated release cycles from bi-weekly to continuous deploy\n- Maintained 99.99% system availability through peak traffic\n- Expanded enterprise multi-region redundancy',
-  },
-  {
-    id: 'section-break',
-    name: 'Section Break / Chapter',
-    description: 'Clean visual transition divider between presentation parts',
-    icon: '▬',
-    category: 'Basic',
-    markdown: '## Part 02\n\n> "Simplicity is prerequisite for reliability."\n\n### Scalable Infrastructure & Architecture Evolution',
-  },
-
-  // ── 2. Callouts & Notes (5–10) (MD -> Docs Enterprise Styles) ──────────────
-  {
-    id: 'callouts-pair',
-    name: 'Note & Important Alert Stack',
-    description: 'Paired information context card with critical warning notice',
-    icon: '🚨',
-    category: 'Callouts & Notes',
-    markdown: '## Production Release Notice\n\n:::important\nDatabase schema migration v4.2 requires a 15-minute maintenance window at 02:00 UTC. Ensure all background workers are drained before deploying.\n:::\n\n:::note\nZero customer-facing downtime is expected for cached read requests through Edge CDN proxies.\n:::',
-  },
-  {
-    id: 'enterprise-alerts',
-    name: 'Enterprise Production Alerts',
-    description: 'Triple alert stack: Architecture, Pro Tip, and Production Readiness',
-    icon: '📋',
-    category: 'Callouts & Notes',
-    markdown: '## Enterprise Production Alerts & Notices\n\n:::architecture\n**Architecture Review Notice**: All microservices adhere to 12-Factor principles with stateless container execution and automated health checkpoints.\n:::\n\n:::tip\n**Pro Tip for Engineers**: Use distributed tracing with OpenTelemetry to trace latency across API Gateway and background tasks.\n:::\n\n:::warning\n**Production Readiness**: Zero-downtime rollback hooks must be validated before canary traffic hits 50%.\n:::',
-  },
-  {
-    id: 'arch-notice',
-    name: 'Architecture Review Card',
-    description: 'Teal architecture contract and service-level requirements card',
-    icon: '🏗️',
-    category: 'Callouts & Notes',
-    markdown: '## System Architecture Standards\n\n:::architecture\nAll API endpoints must return structured JSON errors with standardized trace IDs and adhere to strict p99 < 80ms latency SLAs.\n:::\n\n- Real-time gRPC streaming for internal worker communication\n- Read-replicas with automatic geographic DNS failover\n- Circuit-breaker patterns on external third-party integrations',
-  },
-  {
-    id: 'security-card',
-    name: 'Security & Compliance Card',
-    description: 'Purple security guardrails with role-based access requirements',
-    icon: '🛡️',
-    category: 'Callouts & Notes',
-    markdown: '## Security & Compliance Guardrails\n\n:::security\nNever hardcode credentials or API keys. Use AWS Secrets Manager or HashiCorp Vault with short-lived automatic rotation.\n:::\n\n- SOC2 Type II and ISO 27001 certified workflows\n- Mandatory mTLS for all inter-service cluster traffic\n- Automated static vulnerability scanning in CI/CD pipeline',
-  },
-  {
-    id: 'pro-tips-card',
-    name: 'Pro Tips & Best Practices',
-    description: 'Emerald green best-practice advice card for teams',
-    icon: '💡',
-    category: 'Callouts & Notes',
-    markdown: '## Engineering Best Practices\n\n:::tip\nAlways implement idempotent mutation endpoints with client-supplied UUID idempotency keys to prevent duplicate transaction executions.\n:::\n\n- Validate request schemas strictly at the API gateway layer\n- Set aggressive client connection timeouts on external HTTP calls\n- Log structured JSON with correlation identifiers',
-  },
-  {
-    id: 'multi-notice-grid',
-    name: 'Status & Action Matrix',
-    description: 'Multi-variant notices highlighting status, action items, and tips',
-    icon: '⚡',
-    category: 'Callouts & Notes',
-    markdown: '## Deployment Checklist Guidelines\n\n:::info\nStaging environment is automatically synced with production DB snapshots every 24 hours.\n:::\n\n:::important\nAudit logs must be retained for a minimum of 365 days in encrypted cold storage.\n:::\n\n:::tip\nRun load tests against the staging cluster using the provided k6 performance script.\n:::',
-  },
-
-  // ── 3. Media & Visuals (11–15) ─────────────────────────────────────────────
-  {
-    id: 'image-full',
-    name: 'Full Visual Hero',
-    description: 'High-impact full width image with subtitle caption',
-    icon: '🖼️',
-    category: 'Media & Visuals',
-    markdown: '## Global Infrastructure Overview\n\n![Global Network Map|fit:cover|maxH:380|align:center|w:100%|radius:lg|shadow:true](https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200)\n\n_24 edge regions deployed across North America, Europe, and Asia-Pacific._',
-  },
-  {
-    id: 'image-caption',
-    name: 'Analytics Dashboard & Stats',
-    description: 'Dashboard screenshot with analytical insights underneath',
-    icon: '📸',
-    category: 'Media & Visuals',
-    markdown: '## Real-time Telemetry Dashboard\n\n![Analytics Dashboard|fit:contain|maxH:320|align:center|w:90%|radius:md|shadow:true](https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200)\n\n:::note\np99 latency dropped from 240ms to 42ms following Redis cluster sharding and query caching.\n:::',
-  },
-  {
-    id: 'image-alert',
-    name: 'Image + Critical Context',
-    description: 'Visual diagram paired with an important alert and action step',
-    icon: '🖼️',
-    category: 'Media & Visuals',
-    markdown: '## Network Traffic Distribution\n\n:::important\nTraffic spikes during Black Friday require pre-warming autoscaling groups 2 hours in advance.\n:::\n\n![Traffic Chart|fit:contain|maxH:300|align:center|w:100%|radius:md](https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1000)\n\n- Baseline capacity: 50,000 req/sec\n- Surge headroom: up to 300,000 req/sec',
-  },
-  {
-    id: 'image-split',
-    name: 'Split Image & Key Takeaways',
-    description: 'Balanced visual representation alongside strategic bullet takeaways',
-    icon: '🌗',
-    category: 'Media & Visuals',
-    markdown: '## Platform Experience Redesign\n\n![Mobile App Interface|fit:cover|maxH:280|align:center|w:85%|radius:lg|shadow:true](https://images.unsplash.com/photo-1526470608268-f674ce90ebd4?w=800)\n\n- **Unified Design System**: Reduced frontend bundle size by 35%\n- **Accessible First**: 100% WCAG 2.1 AA compliance score\n- **Sub-100ms Interactions**: Optimistic UI updates with offline cache support',
-  },
-  {
-    id: 'image-gallery-3',
-    name: 'Showcase Feature Banner',
-    description: 'Showcase banner with high-resolution visual and key feature highlights',
-    icon: '✨',
-    category: 'Media & Visuals',
-    markdown: '## Product Architecture Showcase\n\n![Modern Architecture Workspace|fit:cover|maxH:300|align:center|w:100%|radius:lg|shadow:true](https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1200)\n\n:::tip\nModular workspaces allow cross-functional teams to independently iterate without cross-repo blockers.\n:::',
-  },
-
-  // ── 4. Data & Tables (16–20) ───────────────────────────────────────────────
-  {
-    id: 'metrics-3',
-    name: '3 Headline KPI Numbers',
-    description: 'Three high-level key performance metrics for leadership presentations',
-    icon: '📈',
-    category: 'Data & Tables',
-    markdown: '## Q3 Business Performance\n\n| Metric | Value | QoQ Growth |\n| :--- | :--- | :--- |\n| **Annual Recurring Revenue** | **$18.4M** | 🟢 +42% YoY |\n| **Active Developers** | **142,000** | 🟢 +68% QoQ |\n| **Net Retention Rate** | **128%** | 🟢 Top Quartile |\n\n:::note\nCustomer acquisition cost (CAC) payback period decreased from 14 months to 8.5 months.\n:::',
-  },
-  {
-    id: 'metrics-4',
-    name: '4 Stat Performance Grid',
-    description: 'System reliability and infrastructure KPI scorecard',
-    icon: '📊',
-    category: 'Data & Tables',
-    markdown: '## Core Engineering KPIs\n\n| Core Indicator | Target | Current Actual | Status |\n| :--- | :--- | :--- | :--- |\n| **Availability SLA** | 99.95% | **99.992%** | ✅ Exceeding |\n| **p95 Latency** | < 120ms | **48ms** | ✅ Optimal |\n| **MTTR (Mean Time to Recover)** | < 15m | **4.2m** | ✅ Optimal |\n| **Build & Deploy Time** | < 10m | **3.8m** | ✅ Automated |',
-  },
-  {
-    id: 'table-comparison',
-    name: 'Feature & Plan Comparison',
-    description: 'Comprehensive 3-column product tier comparison matrix',
-    icon: '⚖️',
-    category: 'Data & Tables',
-    markdown: '## Tier Comparison Matrix\n\n| Feature | Starter Plan | Pro Plan | Enterprise Tier |\n| :--- | :--- | :--- | :--- |\n| **API Rate Limits** | 1,000 req/min | 20,000 req/min | **Unlimited Dedicated** |\n| **Data Retention** | 30 Days | 1 Year | **Custom / Forever** |\n| **SSO / SAML** | ❌ | ✅ Google/Okta | **Custom IdP + SCIM** |\n| **SLA Guarantee** | Best Effort | 99.9% | **99.99% with Penalties** |\n| **Support Channel** | Community | Slack Priority | **24/7 Phone & TAM** |',
-  },
-  {
-    id: 'table-status',
-    name: 'Roadmap & Feature Tracker',
-    description: 'Clear initiative status table with owners and completion dates',
-    icon: '✅',
-    category: 'Data & Tables',
-    markdown: '## Q4 Engineering Roadmap Status\n\n| Initiative | Target Milestone | DRI | Health |\n| :--- | :--- | :--- | :--- |\n| **Zero-Trust Auth v2** | Nov 15 | @sarah | 🟢 On Track |\n| **Postgres Partitioning** | Nov 28 | @alex | 🟡 In Review |\n| **Global Edge Caching** | Dec 10 | @michael | 🟢 In Progress |\n| **Kubernetes v1.30 Upgrade**| Dec 20 | @devops | 🟢 Planned |',
-  },
-  {
-    id: 'table-formula',
-    name: 'System Reliability & Formula Matrix',
-    description: 'SLA calculations, throughput formulas, and performance limits',
-    icon: '🧮',
-    category: 'Data & Tables',
-    markdown: '## System Reliability & Performance Formulas\n\n:::architecture\n**Availability Formula**: Availability = (MTBF / (MTBF + MTTR)) × 100%\n:::\n\n| Formula / Metric | Mathematical Expression | Target Benchmark |\n| :--- | :--- | :--- |\n| **Throughput Capacity** | $T = \\frac{N_{threads}}{\\Delta t_{response}}$ | > 15,000 req/sec |\n| **Availability Target** | $A = \\frac{Total - Downtime}{Total}$ | **99.99% (Four Nines)** |\n| **Little\'s Law** | $L = \\lambda \\times W$ | Queue depth < 50 |',
-  },
-
-  // ── 5. Code & Tech (21–25) ─────────────────────────────────────────────────
-  {
-    id: 'code-api',
-    name: 'API Endpoint Implementation',
-    description: 'TypeScript code snippet demonstrating client library integration',
-    icon: '</>',
-    category: 'Code & Tech',
-    markdown: '## TypeScript SDK Client Usage\n\n```typescript\nimport { DeckEngine } from \'@deck/core\'\n\nconst engine = new DeckEngine({\n  apiKey: process.env.DECK_API_KEY,\n  environment: \'production\',\n  retries: 3,\n})\n\n// Render slide deck from markdown stream\nconst presentation = await engine.compileMarkdown(sourceMarkdown, {\n  aspectRatio: \'16:9\',\n  theme: \'dark\',\n})\n```',
-  },
-  {
-    id: 'code-warning',
-    name: 'Code + Critical Security Notice',
-    description: 'Code sample paired with an important security warning alert',
-    icon: '</>',
-    category: 'Code & Tech',
-    markdown: '## Secure Authentication Setup\n\n```typescript\nexport const authOptions = {\n  session: { strategy: "jwt", maxAge: 3600 },\n  providers: [\n    OAuthProvider({\n      clientId: process.env.AUTH_CLIENT_ID!,\n      clientSecret: process.env.AUTH_SECRET!,\n    }),\n  ],\n}\n```\n\n:::important\nEnsure `AUTH_SECRET` is generated via a cryptographically secure 256-bit random generator and rotated every quarter.\n:::',
-  },
-  {
-    id: 'code-config-table',
-    name: 'Config JSON + Parameter Table',
-    description: 'Configuration file structure paired with property definitions table',
-    icon: '📋',
-    category: 'Code & Tech',
-    markdown: '## Cluster Configuration Specs\n\n```json\n{\n  "cluster": "prod-us-east-1",\n  "replicas": { "min": 3, "max": 24 },\n  "autoscaling": { "targetCpuUtilization": 75 }\n}\n```\n\n| Property | Type | Default | Description |\n| :--- | :--- | :--- | :--- |\n| `replicas.min` | integer | `3` | Minimum healthy pods across availability zones |\n| `replicas.max` | integer | `20` | Max ceiling for automatic surge scaling |\n| `autoscaling.targetCpu` | integer | `70` | Average CPU threshold triggering pod scale-out |',
-  },
-  {
-    id: 'mermaid-arch',
-    name: 'System Architecture Diagram',
-    description: 'Mermaid flowchart visualizing microservice and cloud data flow',
-    icon: '🏗️',
-    category: 'Code & Tech',
-    markdown: '## Distributed Cloud Architecture\n\n```mermaid\ngraph LR\n  Client[Global Clients] -->|HTTPS / WSS| CDN[Cloudflare Edge]\n  CDN -->|Anycast| Gateway[Kong API Gateway]\n  Gateway -->|gRPC| Auth[Auth Service]\n  Gateway -->|gRPC| Core[Core Application Engine]\n  Core --> DB[(PostgreSQL Primary)]\n  Core --> Cache[(Redis Cluster)]\n  Core --> Kafka{{Kafka Event Stream}}\n```\n\n:::architecture\nDecoupled event streams ensure microservices process background tasks asynchronously.\n:::',
-  },
-  {
-    id: 'mermaid-sequence',
-    name: 'Sequence & Auth Flow',
-    description: 'Mermaid sequence diagram illustrating authentication flow',
-    icon: '🔄',
-    category: 'Code & Tech',
-    markdown: '## OAuth 2.0 PKCE Flow\n\n```mermaid\nsequenceDiagram\n  autonumber\n  actor User\n  participant Client as Web SPA\n  participant IdP as Identity Provider\n  participant API as API Gateway\n\n  User->>Client: Click Login\n  Client->>IdP: Authorize with Code Challenge\n  IdP-->>Client: Authorization Code\n  Client->>IdP: Exchange Code + Verifier\n  IdP-->>Client: JWT ID & Access Token\n  Client->>API: GET /api/v1/user (Bearer JWT)\n  API-->>Client: 200 OK (User Profile)\n```',
-  },
-
-  // ── 6. Lists & Process (26–30) ─────────────────────────────────────────────
-  {
-    id: 'checklist-launch',
-    name: 'Production Launch Checklist',
-    description: 'Interactive markdown checklist with completed and pending tasks',
-    icon: '✔️',
-    category: 'Lists & Process',
-    markdown: '## Production Go-Live Checklist\n\n- [x] End-to-end integration tests passing (482/482)\n- [x] Load testing verified at 2.5× peak traffic volume\n- [x] Database indexes created and query planner verified\n- [x] Security audit penetration test signed off\n- [ ] DNS TTL lowered to 60 seconds\n- [ ] On-call engineer alerted in OpsGenie\n- [ ] Marketing release blog post queued',
-  },
-  {
-    id: 'process-steps',
-    name: '5-Step Implementation Guide',
-    description: 'Numbered step-by-step workflow with concise instructions',
-    icon: '1️⃣',
-    category: 'Lists & Process',
-    markdown: '## Deployment Pipeline Workflow\n\n1. **Code Validation**: Linting, formatting, and strict TypeScript compilation\n2. **Automated Unit Testing**: Parallel test execution across mock databases\n3. **Artifact Generation**: Multi-stage Docker build with zero vulnerability layers\n4. **Canary Rollout**: Initial 5% traffic deployment with real-time error monitoring\n5. **Full Promotion**: Automatic 100% traffic shift once p99 latencies stay normal',
-  },
-  {
-    id: 'pros-cons',
-    name: 'Architecture Trade-offs (Pros & Cons)',
-    description: 'Balanced two-column comparison of technical trade-offs',
-    icon: '⚖️',
-    category: 'Lists & Process',
-    markdown: '## Event-Driven Architecture Trade-offs\n\n**Key Advantages**\n\n- Loose coupling allows services to scale independently\n- Resilient against temporary downstream outages\n- Built-in audit trail through immutable event logs\n\n**Considerations & Challenges**\n\n- Eventual consistency requires careful UI state management\n- Distributed tracing requires unified correlation IDs\n- Debugging asynchronous event chains has higher complexity',
-  },
-  {
-    id: 'timeline-quarters',
-    name: 'Quarterly Strategic Milestones',
-    description: 'Roadmap timeline detailing quarterly deliverables and achievements',
-    icon: '🗓️',
-    category: 'Lists & Process',
-    markdown: '## Strategic Horizon 2026\n\n| Period | Strategic Pillar | Key Objective |\n| :--- | :--- | :--- |\n| **Q1 2026** | Enterprise Security | Automated SAML / SCIM & SOC2 Type II certification |\n| **Q2 2026** | Multi-Cloud Resilience | Automated disaster recovery across AWS & GCP |\n| **Q3 2026** | Edge Computing | Sub-10ms localized compute in 120+ global PoPs |\n| **Q4 2026** | AI Engine | Intelligent query optimization and automated indexing |',
-  },
-  {
-    id: 'agenda-schedule',
-    name: 'Meeting Agenda & Structure',
-    description: 'Structured meeting timetable with time allocations and objectives',
-    icon: '📅',
-    category: 'Lists & Process',
-    markdown: '## Executive Technical Briefing\n\n1. **Opening Context & Highlights** — _10 mins_ (Q3 Results & Metrics)\n2. **Architecture Modernization** — _20 mins_ (Microservices & Edge Migration)\n3. **Reliability & Security Posture** — _15 mins_ (Zero-Trust & SLA Compliance)\n4. **2026 Roadmap & Resource Allocation** — _15 mins_ (Key Investments)\n5. **Open Discussion & Q&A** — _15 mins_ (Stakeholder Alignment)',
-  },
-]
-
 // ─── Callout Parser & Preprocessor ───────────────────────────────────────────
-interface CalloutBlock {
+export interface CalloutBlock {
   variant: CalloutVariant
   content: string
+  style?: CalloutStyle
+  rawDirective?: string
 }
 
 export function parseSlideSegments(body: string): Array<{ type: 'callout'; data: CalloutBlock } | { type: 'markdown'; data: string }> {
@@ -564,39 +195,73 @@ export function parseSlideSegments(body: string): Array<{ type: 'callout'; data:
   while (i < lines.length) {
     const line = lines[i]
 
-    // 1. Check container directive: :::note, :::important, :::tip, :::warning, :::info, :::security, :::architecture
-    const directiveMatch = line.match(/^:::(note|important|tip|warning|info|security|architecture|arch|caution|danger)\s*$/i)
+    // 1. Check container directive: :::note, :::note|style:modern, :::important[style=accent], etc.
+    const directiveMatch = line.match(/^:::(note|important|tip|warning|info|security|architecture|arch|caution|danger)(?:[|:\s\[{]+(?:style[:=])?([a-zA-Z]+)[\]}]*)?\s*$/i)
     if (directiveMatch) {
       if (mdBuffer.trim()) { segments.push({ type: 'markdown', data: mdBuffer }); mdBuffer = '' }
       let rawVariant = directiveMatch[1].toLowerCase()
       if (rawVariant === 'arch') rawVariant = 'architecture'
       if (rawVariant === 'caution' || rawVariant === 'danger') rawVariant = 'warning'
       const variant = (rawVariant in CALLOUT_CONFIG ? rawVariant : 'note') as CalloutVariant
+
+      let explicitStyle: CalloutStyle | undefined = undefined
+      if (directiveMatch[2]) {
+        const s = directiveMatch[2].toLowerCase()
+        if (['enterprise', 'modern', 'accent', 'glass'].includes(s)) {
+          explicitStyle = s as CalloutStyle
+        }
+      }
+
       const contentLines: string[] = []
       i++
       while (i < lines.length && !lines[i].trim().startsWith(':::')) {
         contentLines.push(lines[i])
         i++
       }
-      segments.push({ type: 'callout', data: { variant, content: contentLines.join('\n') } })
+      segments.push({
+        type: 'callout',
+        data: {
+          variant,
+          content: contentLines.join('\n'),
+          style: explicitStyle,
+          rawDirective: line.trim(),
+        },
+      })
       i++
       continue
     }
 
-    // 2. Check GitHub Alert syntax: > [!NOTE], > [!IMPORTANT], > [!WARNING], > [!TIP], > [!CAUTION]
-    const ghAlertMatch = line.match(/^>\s*\[!(NOTE|IMPORTANT|WARNING|TIP|CAUTION|INFO|SECURITY)\]\s*$/i)
+    // 2. Check GitHub Alert syntax: > [!NOTE], > [!IMPORTANT], > [!WARNING|style:modern], etc.
+    const ghAlertMatch = line.match(/^>\s*\[!(NOTE|IMPORTANT|WARNING|TIP|CAUTION|INFO|SECURITY)(?:[|:\s]+(?:style[:=])?([a-zA-Z]+))?\]\s*$/i)
     if (ghAlertMatch) {
       if (mdBuffer.trim()) { segments.push({ type: 'markdown', data: mdBuffer }); mdBuffer = '' }
       let key = ghAlertMatch[1].toLowerCase()
       if (key === 'caution') key = 'warning'
       const variant = (key in CALLOUT_CONFIG ? key : 'note') as CalloutVariant
+
+      let explicitStyle: CalloutStyle | undefined = undefined
+      if (ghAlertMatch[2]) {
+        const s = ghAlertMatch[2].toLowerCase()
+        if (['enterprise', 'modern', 'accent', 'glass'].includes(s)) {
+          explicitStyle = s as CalloutStyle
+        }
+      }
+
       const contentLines: string[] = []
       i++
       while (i < lines.length && lines[i].startsWith('>')) {
         contentLines.push(lines[i].replace(/^>\s?/, ''))
         i++
       }
-      segments.push({ type: 'callout', data: { variant, content: contentLines.join('\n') } })
+      segments.push({
+        type: 'callout',
+        data: {
+          variant,
+          content: contentLines.join('\n'),
+          style: explicitStyle,
+          rawDirective: line.trim(),
+        },
+      })
       continue
     }
 
@@ -614,7 +279,14 @@ export function parseSlideSegments(body: string): Array<{ type: 'callout'; data:
         contentLines.push(lines[i].replace(/^(?:>|\/>)\s?/, ''))
         i++
       }
-      segments.push({ type: 'callout', data: { variant, content: contentLines.join('\n') } })
+      segments.push({
+        type: 'callout',
+        data: {
+          variant,
+          content: contentLines.join('\n'),
+          rawDirective: line.trim(),
+        },
+      })
       continue
     }
 
@@ -624,6 +296,401 @@ export function parseSlideSegments(body: string): Array<{ type: 'callout'; data:
 
   if (mdBuffer.trim()) segments.push({ type: 'markdown', data: mdBuffer })
   return segments
+}
+
+// ─── Markdown Syntax Color Coder ───────────────────────────────────────────────
+export function ColorCodedMarkdown({
+  markdown,
+  className = '',
+}: {
+  markdown: string
+  className?: string
+}) {
+  const lines = useMemo(() => markdown.split('\n'), [markdown])
+
+  return (
+    <div className={`font-mono text-xs md:text-sm leading-relaxed select-text overflow-y-auto p-5 space-y-1 bg-zinc-950 text-zinc-100 ${className}`}>
+      {lines.map((line, i) => {
+        // 1. Slide Boundary (---)
+        if (line.trim() === '---') {
+          return (
+            <div key={i} className="my-3 flex items-center gap-2 py-1.5 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 font-bold">
+              <span className="text-[10px] tracking-widest uppercase font-mono">─── Slide Delimiter ───</span>
+            </div>
+          )
+        }
+
+        // 2. Heading 1 (# Title)
+        if (/^#\s+/.test(line)) {
+          return (
+            <div key={i} className="font-bold text-base py-1 text-sky-400 flex items-baseline gap-1.5">
+              <span className="text-sky-500/60 text-xs font-mono select-none">#</span>
+              <span>{line.replace(/^#\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // 3. Heading 2 (## Subtitle)
+        if (/^##\s+/.test(line)) {
+          return (
+            <div key={i} className="font-semibold text-sm py-0.5 text-indigo-300 flex items-baseline gap-1.5">
+              <span className="text-indigo-500/60 text-xs font-mono select-none">##</span>
+              <span>{line.replace(/^##\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // 4. Heading 3 (### Section)
+        if (/^###\s+/.test(line)) {
+          return (
+            <div key={i} className="font-semibold text-xs py-0.5 text-cyan-300 flex items-baseline gap-1.5">
+              <span className="text-cyan-500/60 text-[10px] font-mono select-none">###</span>
+              <span>{line.replace(/^###\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // 5. Callout Directives (:::note, :::important, :::tip, etc.)
+        const calloutMatch = line.match(/^:::(note|important|tip|warning|info|security|architecture|arch)(.*)$/i)
+        if (calloutMatch) {
+          const v = calloutMatch[1].toLowerCase()
+          const colorStyles: Record<string, string> = {
+            note: 'border-sky-500/50 bg-sky-500/20 text-sky-300',
+            important: 'border-red-500/50 bg-red-500/20 text-red-300',
+            tip: 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300',
+            warning: 'border-amber-500/50 bg-amber-500/20 text-amber-300',
+            info: 'border-indigo-500/50 bg-indigo-500/20 text-indigo-300',
+            security: 'border-purple-500/50 bg-purple-500/20 text-purple-300',
+            architecture: 'border-teal-500/50 bg-teal-500/20 text-teal-300',
+          }
+          return (
+            <div key={i} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono font-bold my-1 ${colorStyles[v] ?? 'bg-muted text-foreground'}`}>
+              <span>:::{v}</span>
+              {calloutMatch[2] && <span className="text-[11px] opacity-80">{calloutMatch[2]}</span>}
+            </div>
+          )
+        }
+
+        // 6. Callout Close
+        if (line.trim() === ':::') {
+          return (
+            <div key={i} className="text-xs font-mono font-bold text-zinc-500 my-0.5">
+              :::
+            </div>
+          )
+        }
+
+        // 7. Images ![alt|params](url)
+        if (/^!\[.*\]\(.*\)/.test(line)) {
+          return (
+            <div key={i} className="text-emerald-400 font-mono text-xs py-1 px-2.5 rounded border border-emerald-500/30 bg-emerald-950/40 my-1 flex items-center gap-2">
+              <ImageIcon className="size-3.5 shrink-0 text-emerald-400" />
+              <span className="truncate">{line}</span>
+            </div>
+          )
+        }
+
+        // 8. Table syntax | col | col |
+        if (/^\|.*\|/.test(line)) {
+          return (
+            <div key={i} className="text-teal-300 font-mono text-xs py-0.5 border-l-2 border-teal-500/50 pl-2">
+              {line}
+            </div>
+          )
+        }
+
+        // 9. Code Fences ```
+        if (/^```/.test(line)) {
+          return (
+            <div key={i} className="text-purple-300 font-mono text-xs py-0.5 px-2 rounded border border-purple-500/30 bg-purple-950/40 my-1">
+              {line}
+            </div>
+          )
+        }
+
+        // 10. Checklist item
+        if (/^-\s+\[(x| )\]/.test(line)) {
+          const isDone = line.includes('[x]')
+          return (
+            <div key={i} className={`py-0.5 text-xs flex items-center gap-1.5 ${isDone ? 'text-emerald-400 font-medium' : 'text-zinc-400'}`}>
+              <CheckSquare className="size-3 shrink-0" />
+              <span>{line.replace(/^-\s+\[(x| )\]\s*/, '')}</span>
+            </div>
+          )
+        }
+
+        // 11. Bullet item
+        if (/^-\s+/.test(line)) {
+          return (
+            <div key={i} className="text-zinc-300 py-0.5 flex items-baseline gap-2">
+              <span className="text-primary text-xs">•</span>
+              <span>{line.replace(/^-\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // 12. Blockquote
+        if (/^>\s+/.test(line)) {
+          return (
+            <div key={i} className="text-amber-200/90 italic border-l-2 border-amber-400/60 pl-3 py-0.5 my-1 text-xs">
+              {line}
+            </div>
+          )
+        }
+
+        // Empty line
+        if (!line.trim()) {
+          return <div key={i} className="h-3" />
+        }
+
+        // Normal text
+        return (
+          <div key={i} className="text-zinc-300 py-0.5 leading-relaxed">
+            {line}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── AI Deck Generator & llms.txt Integration Modal ─────────────────────────
+function AiDeckGeneratorModal({
+  onApplyMarkdown,
+  onClose,
+}: {
+  onApplyMarkdown: (md: string) => void
+  onClose: () => void
+}) {
+  const [tab, setTab] = useState<'generate' | 'llms'>('generate')
+  const [topic, setTopic] = useState('')
+  const [slideCount, setSlideCount] = useState(5)
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [llmsContent, setLlmsContent] = useState('')
+
+  useEffect(() => {
+    setLlmsContent(generateLLMsTxt())
+  }, [])
+
+  const handleGenerate = async () => {
+    if (!topic.trim()) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/generate-deck', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, slideCount }),
+      })
+      const data = await res.json()
+      if (data.markdown) {
+        onApplyMarkdown(data.markdown)
+        onClose()
+      }
+    } catch {
+      // Fallback local generator if offline
+      const fallback = `# ${topic}\n\nAutomated presentation generated by Md2Slide.\n\n---\n\n## Overview & Key Drivers\n\n- Milestone execution\n- SLA reliability\n- Developer velocity\n\n:::tip\nModular architecture streamlines team velocity.\n:::`
+      onApplyMarkdown(fallback)
+      onClose()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyLLMs = () => {
+    navigator.clipboard.writeText(llmsContent)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4 sm:p-6">
+      <div className="flex h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl animate-in zoom-in-95">
+        {/* Header */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b px-6 bg-card/60">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Sparkles className="size-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">AI Presentation Deck Assistant & llms.txt</h2>
+              <p className="text-[11px] text-muted-foreground">Generate complete slide decks with AI or consume dynamic llms.txt specs</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex border-b bg-muted/20 px-6 gap-2 pt-2">
+          <button
+            onClick={() => setTab('generate')}
+            className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+              tab === 'generate'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Bot className="size-3.5" />
+            Generate Deck with AI
+          </button>
+          <button
+            onClick={() => setTab('llms')}
+            className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+              tab === 'llms'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileCode className="size-3.5" />
+            Dynamic llms.txt & Agent API
+            <Badge variant="outline" className="text-[9px] font-mono text-emerald-500">
+              LIVE ENDPOINT
+            </Badge>
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {tab === 'generate' ? (
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Presentation Topic or Prompt
+                </label>
+                <input
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="e.g. Next-Gen Microservice Architecture & Zero-Trust Migration"
+                  className="w-full rounded-xl border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
+                />
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Quick Starter Topics</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'Cloud Microservice Architecture & SLAs',
+                    'Executive Q4 Business Review & KPIs',
+                    'Product Launch & Go-To-Market Strategy',
+                    'Enterprise Zero-Trust Security Posture',
+                    'Developer Platform SDK & API Strategy',
+                  ].map((chip) => (
+                    <button
+                      key={chip}
+                      onClick={() => setTopic(chip)}
+                      className="rounded-lg border bg-muted/30 hover:bg-muted px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Number of Slides
+                  </label>
+                  <span className="text-xs font-mono font-bold text-primary">{slideCount} Slides</span>
+                </div>
+                <input
+                  type="range"
+                  min={3}
+                  max={8}
+                  value={slideCount}
+                  onChange={(e) => setSlideCount(Number(e.target.value))}
+                  className="w-full accent-primary cursor-pointer"
+                />
+              </div>
+
+              <div className="rounded-xl border bg-card p-4 space-y-2">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Check className="size-3.5 text-emerald-500" />
+                  What AI will generate:
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 pl-5 list-disc">
+                  <li>Executive Title Hero slide with subtitle and metadata</li>
+                  <li>KPI Data Table with latency targets and availability numbers</li>
+                  <li>Mermaid Architecture Flowchart diagram</li>
+                  <li>Enterprise Notice cards (:::note, :::security, :::tip)</li>
+                  <li>Production launch checklist items (- [x])</li>
+                </ul>
+              </div>
+
+              <Button
+                onClick={handleGenerate}
+                disabled={!topic.trim() || loading}
+                className="w-full h-11 text-sm font-bold shadow-lg"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="mr-2 size-4 animate-spin" />
+                    Generating Presentation...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 size-4" />
+                    Generate & Insert Deck
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Single Source of Truth /llms.txt</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Exposed dynamically via Next.js route handler. Updates automatically whenever code or templates change.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="/llms.txt"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border bg-muted/40 hover:bg-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors"
+                  >
+                    <ExternalLink className="size-3 text-primary" />
+                    Open /llms.txt
+                  </a>
+                  <Button size="sm" onClick={copyLLMs} className="h-8 gap-1.5 text-xs font-semibold">
+                    {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+                    {copied ? 'Copied!' : 'Copy Spec'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* API Endpoints Catalog */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { route: 'GET /llms.txt', desc: 'Standard AI Agent instruction prompt' },
+                  { route: 'GET /llms-full.txt', desc: 'Full extended spec with all 30 template codes' },
+                  { route: 'GET /api/spec', desc: 'JSON syntax, callouts, and image parameters' },
+                  { route: 'GET /api/templates', desc: 'JSON catalog of all slide & deck layouts' },
+                  { route: 'POST /api/generate-deck', desc: 'Generate structured Markdown deck' },
+                  { route: 'POST /api/validate-deck', desc: 'Lint and validate presentation syntax' },
+                ].map((ep) => (
+                  <div key={ep.route} className="rounded-lg border bg-card p-3 font-mono text-xs">
+                    <span className="font-bold text-primary">{ep.route}</span>
+                    <p className="font-sans text-[11px] text-muted-foreground mt-0.5">{ep.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Live Spec Preview */}
+              <div className="rounded-xl border bg-zinc-950 p-4 font-mono text-xs text-zinc-300 overflow-x-auto max-h-72">
+                <pre className="whitespace-pre-wrap leading-relaxed">{llmsContent}</pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Initial Markdown Content ─────────────────────────────────────────────────
@@ -696,6 +763,10 @@ const initialMarkdown = [
 
 // ─── Slide Parser ─────────────────────────────────────────────────────────────
 export const parseSlides = (md: string): Slide[] => {
+  if (!md || !md.trim()) {
+    return [{ id: 'slide-0', title: 'Untitled Presentation', body: '', accent: 'bg-primary', raw: '' }]
+  }
+
   const rawSlides: string[] = []
   let current = ''
   let inFence = false
@@ -710,6 +781,10 @@ export const parseSlides = (md: string): Slide[] => {
   }
   if (current.trim()) rawSlides.push(current.trim())
   if (!rawSlides.length && md.trim()) rawSlides.push(md.trim())
+
+  if (!rawSlides.length) {
+    return [{ id: 'slide-0', title: 'Untitled Presentation', body: '', accent: 'bg-primary', raw: '' }]
+  }
 
   return rawSlides.map((raw, i) => {
     const titleMatch = raw.match(/^#{1,3}\s+(.+)$/m)
@@ -862,7 +937,55 @@ function CalloutCard({
     )
   }
 
-  // Style 3: Modern Card Style
+  // Style 3: Glass Glow Style
+  if (calloutStyle === 'glass') {
+    return (
+      <div
+        onClick={onSelect ? (e) => { e.stopPropagation(); onSelect() } : undefined}
+        style={{
+          display: 'flex',
+          gap: s(12),
+          background: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.75)',
+          backdropFilter: 'blur(16px)',
+          border: `1.5px solid ${borderColor}`,
+          boxShadow: `0 8px 24px ${cfg.color}22`,
+          borderRadius: s(12),
+          padding: `${s(14)}px ${s(18)}px`,
+          marginBottom: s(14),
+          cursor: onSelect ? 'pointer' : 'default',
+          outline: isSelected ? `2px solid ${cfg.color}` : 'none',
+          outlineOffset: 2,
+        }}
+      >
+        <div
+          style={{
+            width: s(32),
+            height: s(32),
+            borderRadius: 999,
+            background: badgeBg,
+            boxShadow: `0 0 16px ${cfg.color}40`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            fontSize: s(15),
+          }}
+        >
+          {cfg.icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: s(11), fontWeight: 700, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: s(4) }}>
+            {cfg.label}
+          </div>
+          <div style={{ fontSize: s(14), lineHeight: 1.6, color: textColor }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Style 4: Modern Card Style (Default)
   return (
     <div
       onClick={onSelect ? (e) => { e.stopPropagation(); onSelect() } : undefined}
@@ -947,9 +1070,15 @@ function SlideMarkdown({
               variant={variant}
               content={content}
               s={s}
-              calloutStyle={calloutStyle}
+              calloutStyle={seg.data.style || calloutStyle}
               isDark={isDark}
-              onSelect={onSelect ? () => onSelect({ type: 'callout', calloutVariant: variant, calloutContent: content }) : undefined}
+              onSelect={onSelect ? () => onSelect({
+                type: 'callout',
+                calloutVariant: variant,
+                calloutStyle: seg.data.style || calloutStyle,
+                calloutContent: content,
+                calloutRawDirective: seg.data.rawDirective,
+              }) : undefined}
               isSelected={isSelected}
             />
           )
@@ -1116,7 +1245,7 @@ function SlideMarkdown({
                 const isSelected = selectedElement?.type === 'image' && (selectedElement.src === imgStr || selectedElement.rawAlt === altStr)
 
                 return (
-                  <div style={alignStyles}>
+                  <span style={alignStyles} className="block">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={imgAttr.src}
@@ -1150,7 +1279,7 @@ function SlideMarkdown({
                         transition: 'all 0.15s ease',
                       }}
                     />
-                  </div>
+                  </span>
                 )
               },
               hr: () => <hr style={{ margin: `${s(16)}px 0`, border: 'none', borderTop: '1px solid var(--color-border)' }} />,
@@ -1169,7 +1298,7 @@ function SlideMarkdown({
 
 // ─── Slide Card Component ─────────────────────────────────────────────────────
 interface SlideCardProps {
-  slide: Slide
+  slide?: Slide
   index: number
   total?: number
   className?: string
@@ -1197,6 +1326,14 @@ function SlideCard({
   const [scale, setScale] = useState(1)
   const [rw, rh] = ratio.split('/').map(Number)
   const canvasH = Math.round(CANVAS_W_PX * (rh / rw))
+
+  const safeSlide: Slide = slide ?? {
+    id: `slide-${index}`,
+    title: `Slide ${index + 1}`,
+    body: '',
+    accent: accentHex[index % accentHex.length],
+    raw: '',
+  }
 
   useEffect(() => {
     const el = containerRef.current
@@ -1269,12 +1406,12 @@ function SlideCard({
               borderRadius: 4,
             }}
           >
-            {slide.title}
+            {safeSlide.title}
           </h2>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', padding: `0 ${s(60)}px ${s(32)}px`, color: 'var(--color-muted-foreground)' }}>
           <SlideMarkdown
-            body={slide.body}
+            body={safeSlide.body}
             fontScale={fontScale}
             calloutStyle={calloutStyle}
             isDark={isDark}
@@ -1296,6 +1433,7 @@ interface InspectorProps {
   onCalloutStyle: (v: CalloutStyle) => void
   onUpdateImage: (updates: Partial<ImageAttributes>) => void
   onUpdateCalloutVariant: (variant: CalloutVariant) => void
+  onUpdateCalloutStyle: (style: CalloutStyle, scope: 'single' | 'all') => void
   onClose: () => void
 }
 
@@ -1307,8 +1445,11 @@ function CanvasInspector({
   onCalloutStyle,
   onUpdateImage,
   onUpdateCalloutVariant,
+  onUpdateCalloutStyle,
   onClose,
 }: InspectorProps) {
+  const [calloutScope, setCalloutScope] = useState<'single' | 'all'>('single')
+
   const Stepper = ({
     value,
     min,
@@ -1392,28 +1533,31 @@ function CanvasInspector({
           </div>
         </Section>
 
-        {/* Global Callout Design Template */}
-        <Section label="Callout Design Style">
-          <div className="grid grid-cols-2 gap-1.5">
-            {[
-              { key: 'enterprise', label: 'Enterprise Docs' },
-              { key: 'modern', label: 'Modern Card' },
-              { key: 'accent', label: 'Left Accent' },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => onCalloutStyle(key as CalloutStyle)}
-                className={`rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-all ${
-                  calloutStyle === key
-                    ? 'border-primary bg-primary/10 text-primary font-semibold'
-                    : 'border-border hover:bg-muted text-muted-foreground'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </Section>
+        {/* Global Deck Callout Design Template */}
+        {selected.type !== 'callout' && (
+          <Section label="Global Callout Style">
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { key: 'enterprise', label: 'Enterprise Docs' },
+                { key: 'modern', label: 'Modern Card' },
+                { key: 'accent', label: 'Left Accent' },
+                { key: 'glass', label: 'Glass Glow' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => onCalloutStyle(key as CalloutStyle)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-all ${
+                    calloutStyle === key
+                      ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs'
+                      : 'border-border hover:bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* Image Controls (Live update + Markdown persistence) */}
         {selected.type === 'image' && (
@@ -1521,30 +1665,85 @@ function CanvasInspector({
           </>
         )}
 
-        {/* Callout Inspector */}
+        {/* Callout Inspector (Both Per-Callout Style & Global Scope) */}
         {selected.type === 'callout' && (
-          <Section label="Callout Notice Type">
-            <p className="mb-2 text-xs text-muted-foreground">Select a notice template variant:</p>
-            <div className="space-y-1.5">
-              {(Object.keys(CALLOUT_CONFIG) as CalloutVariant[]).map((v) => {
-                const cfg = CALLOUT_CONFIG[v]
-                const isActive = selected.calloutVariant === v
-                return (
+          <>
+            <Section label="Callout Notice Type">
+              <p className="mb-2 text-xs text-muted-foreground">Select a notice template variant:</p>
+              <div className="space-y-1.5">
+                {(Object.keys(CALLOUT_CONFIG) as CalloutVariant[]).map((v) => {
+                  const cfg = CALLOUT_CONFIG[v]
+                  const isActive = selected.calloutVariant === v
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => onUpdateCalloutVariant(v)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left text-xs transition-all ${
+                        isActive ? 'border-primary bg-primary/15 font-semibold text-primary shadow-sm' : 'border-border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <span className="text-sm">{cfg.icon}</span>
+                      <span className="flex-1 font-medium">{cfg.label}</span>
+                      {isActive && <Check className="size-3.5 text-primary" />}
+                    </button>
+                  )
+                })}
+              </div>
+            </Section>
+
+            <Section label="Callout Design Style">
+              <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                {[
+                  { key: 'enterprise', label: 'Enterprise Docs' },
+                  { key: 'modern', label: 'Modern Card' },
+                  { key: 'accent', label: 'Left Accent' },
+                  { key: 'glass', label: 'Glass Glow' },
+                ].map(({ key, label }) => {
+                  const isCurrent = (selected.calloutStyle || calloutStyle) === key
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => onUpdateCalloutStyle(key as CalloutStyle, calloutScope)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-all ${
+                        isCurrent
+                          ? 'border-primary bg-primary/15 text-primary font-bold shadow-xs'
+                          : 'border-border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Scope Selector: Single Callout vs All Slides */}
+              <div className="rounded-lg border bg-muted/30 p-2">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Apply Design Style To:</p>
+                <div className="grid grid-cols-2 gap-1">
                   <button
-                    key={v}
-                    onClick={() => onUpdateCalloutVariant(v)}
-                    className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left text-xs transition-all ${
-                      isActive ? 'border-primary bg-primary/15 font-semibold text-primary shadow-sm' : 'border-border hover:bg-muted text-muted-foreground'
+                    onClick={() => setCalloutScope('single')}
+                    className={`rounded py-1 text-[11px] font-semibold transition-all ${
+                      calloutScope === 'single'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:bg-muted'
                     }`}
                   >
-                    <span className="text-sm">{cfg.icon}</span>
-                    <span className="flex-1 font-medium">{cfg.label}</span>
-                    {isActive && <Check className="size-3.5 text-primary" />}
+                    This Callout
                   </button>
-                )
-              })}
-            </div>
-          </Section>
+                  <button
+                    onClick={() => setCalloutScope('all')}
+                    className={`rounded py-1 text-[11px] font-semibold transition-all ${
+                      calloutScope === 'all'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    All Slides
+                  </button>
+                </div>
+              </div>
+            </Section>
+          </>
         )}
 
         {/* Code Block Inspector */}
@@ -1933,6 +2132,8 @@ export function DeckEditor() {
   const [toastMessage, setToastMessage] = useState('')
   const [splitPct, setSplitPct] = useState(48)
   const [selectedEl, setSelectedEl] = useState<SelectedElement>({ type: null })
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [editorViewMode, setEditorViewMode] = useState<'raw' | 'color'>('raw')
 
   const splitRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -2089,6 +2290,38 @@ export function DeckEditor() {
     [selectedEl, sourceMode, slideRaws, active, markdown, handleEditorChange]
   )
 
+  // Functional 2-way sync: updating callout style (single callout or all slides)
+  const handleUpdateCalloutStyle = useCallback(
+    (newStyle: CalloutStyle, scope: 'single' | 'all') => {
+      setSelectedEl((prev) => ({ ...prev, calloutStyle: newStyle }))
+
+      if (scope === 'all') {
+        setCalloutStyle(newStyle)
+        notify(`Applied ${newStyle} style across all slides`)
+      } else {
+        const targetText = sourceMode === 'slide' ? (slideRaws[active] ?? '') : markdown
+        const variant = selectedEl.calloutVariant || 'note'
+
+        // Match :::variant or :::variant|style:...
+        const dirRegex = new RegExp(`:::(?:${variant})(?:[|:\\s\\[{]+(?:style[:=])?[a-zA-Z]+[\\]}]*)?`, 'i')
+        if (dirRegex.test(targetText)) {
+          const updatedText = targetText.replace(dirRegex, `:::${variant}|style:${newStyle}`)
+          handleEditorChange(updatedText)
+          notify(`Applied ${newStyle} to this callout`)
+        } else {
+          // If GitHub alert syntax > [!NOTE]
+          const ghRegex = new RegExp(`>\\s*\\[!(?:${variant})(?:[|:\\s]+(?:style[:=])?[a-zA-Z]+)?\\]`, 'i')
+          if (ghRegex.test(targetText)) {
+            const updatedText = targetText.replace(ghRegex, `> [!${variant.toUpperCase()}|style:${newStyle}]`)
+            handleEditorChange(updatedText)
+            notify(`Applied ${newStyle} to this callout`)
+          }
+        }
+      }
+    },
+    [selectedEl, sourceMode, slideRaws, active, markdown, handleEditorChange, setCalloutStyle]
+  )
+
   // ── Presentation Mode ───────────────────────────────────────────────────────
   if (presenting) {
     return (
@@ -2200,6 +2433,7 @@ export function DeckEditor() {
               <option value="enterprise">Enterprise Docs</option>
               <option value="modern">Modern Card</option>
               <option value="accent">Left Accent</option>
+              <option value="glass">Glass Glow</option>
             </select>
           </div>
 
@@ -2212,6 +2446,16 @@ export function DeckEditor() {
             title={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
           >
             {theme === 'dark' ? <Sun className="size-4 text-amber-400" /> : <Moon className="size-4 text-indigo-500" />}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAiModalOpen(true)}
+            className="gap-1.5 font-semibold text-primary border-primary/40 hover:bg-primary/10 shadow-xs"
+          >
+            <Sparkles className="size-3.5 text-primary" />
+            <span>AI & llms.txt</span>
           </Button>
 
           <Button variant="outline" size="sm" onClick={() => notify('PDF Export generated')}>
@@ -2231,6 +2475,10 @@ export function DeckEditor() {
             <nav className="flex flex-col gap-1 p-2.5">
               <Button variant="secondary" className="justify-start gap-2 text-xs font-semibold">
                 <FileText className="size-3.5" />Active Editor
+              </Button>
+              <Button variant="ghost" className="justify-start gap-2 text-xs text-primary font-medium hover:bg-primary/10" onClick={() => setAiModalOpen(true)}>
+                <Bot className="size-3.5 text-primary" />AI Deck Assistant
+                <Badge className="ml-auto text-[9px] font-mono bg-primary/20 text-primary border-primary/30" variant="outline">AI</Badge>
               </Button>
               <Button variant="ghost" className="justify-start gap-2 text-xs" onClick={() => setNewSlideOpen(true)}>
                 <Plus className="size-3.5 text-primary" />New Slide
@@ -2318,30 +2566,58 @@ export function DeckEditor() {
                   </Badge>
                 </span>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant={editorViewMode === 'color' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1 font-semibold"
+                    onClick={() => setEditorViewMode(editorViewMode === 'color' ? 'raw' : 'color')}
+                    title="Toggle syntax color coding"
+                  >
+                    <Palette className="size-3 text-primary" />
+                    {editorViewMode === 'color' ? 'Color Coded' : 'Syntax Colors'}
+                  </Button>
                   <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setSlash(true)}>
                     <Zap className="mr-1 size-3 text-primary" />Inserts
                   </Button>
                 </div>
               </div>
 
-              <Textarea
-                ref={editor}
-                value={editorValue}
-                onChange={(e) => {
-                  handleEditorChange(e.target.value)
-                  setSlash(e.target.value.slice(0, e.target.selectionStart).split(/\s/).at(-1) === '/')
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === '/') setSlash(true)
-                  if (e.key === 'Escape') setSlash(false)
-                  if (e.key === 'Enter' && slash && INSERTS[0]) {
-                    e.preventDefault()
-                    insert(INSERTS[0][3])
-                  }
-                }}
-                className="min-h-0 flex-1 resize-none overflow-y-auto rounded-none border-0 bg-background p-5 font-mono text-sm leading-7 focus-visible:ring-0"
-                spellCheck={false}
-              />
+              {editorViewMode === 'color' ? (
+                <div className="relative min-h-0 flex-1 flex flex-col bg-zinc-950">
+                  <div className="flex h-7 shrink-0 items-center justify-between border-b border-zinc-800 px-3 bg-zinc-900/60 text-[10px] text-zinc-400">
+                    <span className="flex items-center gap-1.5 font-mono font-bold text-amber-400">
+                      <Palette className="size-3" />
+                      SYNTAX COLOR CODED VIEW
+                    </span>
+                    <button
+                      onClick={() => setEditorViewMode('raw')}
+                      className="text-primary hover:underline font-semibold"
+                    >
+                      Switch to Raw Edit ✎
+                    </button>
+                  </div>
+                  <ColorCodedMarkdown markdown={editorValue} className="flex-1" />
+                </div>
+              ) : (
+                <Textarea
+                  ref={editor}
+                  value={editorValue}
+                  onChange={(e) => {
+                    handleEditorChange(e.target.value)
+                    setSlash(e.target.value.slice(0, e.target.selectionStart).split(/\s/).at(-1) === '/')
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === '/') setSlash(true)
+                    if (e.key === 'Escape') setSlash(false)
+                    if (e.key === 'Enter' && slash && INSERTS[0]) {
+                      e.preventDefault()
+                      insert(INSERTS[0][3])
+                    }
+                  }}
+                  className="min-h-0 flex-1 resize-none overflow-y-auto rounded-none border-0 bg-background p-5 font-mono text-sm leading-7 focus-visible:ring-0"
+                  spellCheck={false}
+                />
+              )}
 
               {/* Slash Quick Insert Dropdown */}
               {slash && (
@@ -2431,6 +2707,7 @@ export function DeckEditor() {
                   onCalloutStyle={setCalloutStyle}
                   onUpdateImage={handleUpdateImage}
                   onUpdateCalloutVariant={handleUpdateCalloutVariant}
+                  onUpdateCalloutStyle={handleUpdateCalloutStyle}
                   onClose={() => setSelectedEl({ type: null })}
                 />
               )}
@@ -2478,46 +2755,119 @@ export function DeckEditor() {
         </main>
       </div>
 
-      {/* Deck Templates Modal (Full Presentation Load) */}
+      {/* Deck Templates Modal (Full Presentation Load with live visual thumbnails) */}
       {deckTemplatesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
-          <div className="max-h-[88vh] w-full max-w-4xl overflow-auto rounded-2xl border bg-background p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4 sm:p-6">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl border bg-background shadow-2xl animate-in zoom-in-95 flex flex-col">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b px-6 bg-card/60">
               <div>
-                <h2 className="text-lg font-bold">Deck Templates (Full Presentations)</h2>
-                <p className="text-xs text-muted-foreground">Load a complete multi-slide presentation structure</p>
+                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <LayoutTemplate className="size-4 text-primary" />
+                  Deck Templates (Full Multi-Slide Presentations)
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Click any template to load a complete presentation structure</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setDeckTemplatesOpen(false)}>
                 <X className="size-4" />
               </Button>
             </div>
 
-            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid flex-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 overflow-y-auto p-6 bg-muted/10">
               {[
-                { name: 'Executive Business Review', desc: 'Quarterly review with KPI metrics, status roadmap, and SLA targets' },
-                { name: 'Architecture Technical Deep-Dive', desc: 'Mermaid microservice flows, sequence diagrams, and security notices' },
-                { name: 'Product Launch & Showcase', desc: 'Feature comparison matrices, hero visual cards, and release checklist' },
-                { name: 'Security & Compliance Briefing', desc: 'Zero-trust guardrails, SOC2 checklists, and audit notice cards' },
-                { name: 'Developer Platform Strategy', desc: 'API SDK walkthroughs, code samples, and performance benchmarking' },
-                { name: 'Startup Pitch & Growth Narrative', desc: 'Market insights, 3-metric KPI highlights, and vision statement' },
-              ].map((tpl, i) => (
-                <button
-                  key={tpl.name}
-                  onClick={() => {
-                    setMarkdown(initialMarkdown)
-                    setDeckTemplatesOpen(false)
-                    notify(`Loaded ${tpl.name}`)
-                  }}
-                  className="group overflow-hidden rounded-xl border bg-card text-left transition-all hover:border-primary hover:shadow-lg p-4"
-                >
-                  <div className="flex h-16 items-center justify-between rounded-lg p-3 mb-3" style={{ background: `${accentHex[i % accentHex.length]}20` }}>
-                    <LayoutTemplate className="size-5 text-primary" />
-                    <span className="font-mono text-xs font-bold text-muted-foreground">{String(i + 1).padStart(2, '0')}</span>
-                  </div>
-                  <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{tpl.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{tpl.desc}</p>
-                </button>
-              ))}
+                {
+                  name: 'Executive Business Review',
+                  desc: 'Quarterly review with KPI metrics, status roadmap, and SLA targets',
+                  slidesCount: 5,
+                  markdown: initialMarkdown,
+                },
+                {
+                  name: 'Architecture Technical Deep-Dive',
+                  desc: 'Mermaid microservice flows, sequence diagrams, and security notices',
+                  slidesCount: 4,
+                  markdown: '# Cloud Microservice Architecture\n\nHigh-availability distributed backend systems.\n\n---\n\n## System Architecture Overview\n\n```mermaid\ngraph LR\n  Client --> Gateway\n  Gateway --> Auth\n  Gateway --> API\n  API --> DB[(Postgres)]\n```\n\n:::architecture\nDecoupled event streams ensure microservices process background tasks asynchronously.\n:::\n\n---\n\n## Security Guardrails\n\n:::security\nNever hardcode credentials or secrets in source code.\n:::',
+                },
+                {
+                  name: 'Product Launch & Showcase',
+                  desc: 'Feature comparison matrices, hero visual cards, and release checklist',
+                  slidesCount: 4,
+                  markdown: '# Next-Gen Platform Launch\n\nAccelerating developer velocity and team momentum.\n\n---\n\n## Product Visual\n\n![Workspace|fit:cover|maxH:320|align:center|w:100%|radius:lg|shadow:true](https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200)\n\n:::tip\nModular architecture enables rapid parallel experimentation.\n:::\n\n---\n\n## Go-Live Checklist\n\n- [x] Security audit signed off\n- [x] Load testing verified\n- [ ] Production rollout complete',
+                },
+                {
+                  name: 'Security & Compliance Briefing',
+                  desc: 'Zero-trust guardrails, SOC2 checklists, and audit notice cards',
+                  slidesCount: 3,
+                  markdown: '# Enterprise Security Posture\n\nZero-trust architecture and SOC2 compliance controls.\n\n---\n\n## Compliance Notice\n\n:::security\nAll microservices require mTLS encryption in transit and AES-256 at rest.\n:::\n\n:::important\nKeys rotated automatically every 90 days via KMS.\n:::',
+                },
+                {
+                  name: 'Developer Platform Strategy',
+                  desc: 'API SDK walkthroughs, code samples, and performance benchmarking',
+                  slidesCount: 4,
+                  markdown: '# Developer Platform SDK\n\nUnified TypeScript and Go client ecosystem.\n\n---\n\n## SDK Usage\n\n```typescript\nimport { Client } from "@deck/sdk"\nconst client = new Client({ apiKey: process.env.API_KEY })\nawait client.init()\n```\n\n:::note\np99 latency < 40ms across all global edge regions.\n:::',
+                },
+                {
+                  name: 'Startup Pitch & Growth Narrative',
+                  desc: 'Market insights, 3-metric KPI highlights, and vision statement',
+                  slidesCount: 3,
+                  markdown: '# Disrupting Modern Collaboration\n\nHigh-velocity presentation authoring with Markdown.\n\n---\n\n## Traction & Growth\n\n| Metric | Value | Growth |\n| :--- | :--- | :--- |\n| **ARR** | **$18.4M** | 🟢 +42% |\n| **Active Users** | **142K** | 🟢 +68% |\n\n:::tip\nNet retention rate top quartile at 128%.\n:::',
+                },
+              ].map((tpl, i) => {
+                const previewSlide = parseSlides(tpl.markdown)[0] ?? {
+                  id: `deck-preview-${i}`,
+                  title: tpl.name,
+                  body: tpl.desc,
+                  accent: 'bg-primary',
+                  raw: tpl.markdown,
+                }
+
+                return (
+                  <button
+                    key={tpl.name}
+                    onClick={() => {
+                      setMarkdown(tpl.markdown)
+                      setActive(0)
+                      setDeckTemplatesOpen(false)
+                      notify(`Loaded ${tpl.name}`)
+                    }}
+                    className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20"
+                  >
+                    {/* Live Slide Thumbnail */}
+                    <div className="relative w-full overflow-hidden border-b bg-background" style={{ aspectRatio: '16/9' }}>
+                      <SlideCard
+                        slide={previewSlide}
+                        index={i}
+                        ratio="16/9"
+                        fontScale={0.8}
+                        calloutStyle="enterprise"
+                        theme="dark"
+                        className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none select-none"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent opacity-30 group-hover:opacity-0 transition-opacity pointer-events-none" />
+                      <div className="absolute top-2 right-2 z-10">
+                        <Badge variant="outline" className="text-[9px] font-semibold bg-black/75 text-white/90 backdrop-blur-md border-white/20 shadow-sm">
+                          {tpl.slidesCount} Slides
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 flex-1 flex flex-col justify-between bg-card">
+                      <div>
+                        <p className="text-xs font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                          {tpl.name}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                          {tpl.desc}
+                        </p>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between pt-2 border-t border-border/60 text-[10px] font-semibold text-primary">
+                        <span className="text-muted-foreground group-hover:text-primary transition-colors">Full Deck</span>
+                        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          Load Presentation →
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -2531,6 +2881,18 @@ export function DeckEditor() {
             notify('Added new slide to deck')
           }}
           onClose={() => setNewSlideOpen(false)}
+        />
+      )}
+
+      {/* AI Deck Generator & llms.txt Modal */}
+      {aiModalOpen && (
+        <AiDeckGeneratorModal
+          onApplyMarkdown={(md) => {
+            setMarkdown(md)
+            setActive(0)
+            notify('Generated presentation with AI')
+          }}
+          onClose={() => setAiModalOpen(false)}
         />
       )}
 
