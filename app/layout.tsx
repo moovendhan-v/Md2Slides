@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Deckrun — Markdown presentations',
+  title: 'Md2Slide — Markdown presentations',
   description: 'Create polished slide presentations from Markdown.',
   generator: 'v0.app',
   icons: {
