@@ -2060,7 +2060,7 @@ function NewSlidePicker({
             </div>
           ) : (
             /* Grid View: 3-Column Thumbnails with High-Legibility Scaling */
-            <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-4 md:p-6 bg-muted/10">
+            <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-4 md:p-6 bg-muted/10 [grid-auto-rows:minmax(260px,auto)]">
               {filtered.map((t, idx) => {
                 const itemSlide = parseSlides(t.markdown)[0] ?? {
                   id: t.id,
@@ -3207,7 +3207,7 @@ export function DeckEditor() {
               </Button>
             </div>
 
-            <div className="grid flex-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 overflow-y-auto p-6 bg-muted/10">
+            <div className="grid flex-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 overflow-y-auto p-6 bg-muted/10 [grid-auto-rows:minmax(260px,auto)]">
               {[
                 {
                   name: 'Executive Business Review',
