@@ -420,6 +420,14 @@ export const SLIDE_TEMPLATES_SPEC: SlideTemplateItem[] = [
     markdown: '## OAuth 2.0 PKCE Flow\n\n```mermaid\nsequenceDiagram\n  autonumber\n  actor User\n  participant Client as Web SPA\n  participant IdP as Identity Provider\n  participant API as API Gateway\n\n  User->>Client: Click Login\n  Client->>IdP: Authorize with Code Challenge\n  IdP-->>Client: Authorization Code\n  Client->>IdP: Exchange Code + Verifier\n  IdP-->>Client: JWT ID & Access Token\n  Client->>API: GET /api/v1/user (Bearer JWT)\n  API-->>Client: 200 OK (User Profile)\n```',
   },
   {
+    id: 'code-diff',
+    name: 'Git Diff & Refactor Walkthrough',
+    description: 'Animated green/red git diff block highlighting code improvements',
+    icon: '⚡',
+    category: 'Code & Tech',
+    markdown: '## Refactoring to Edge Cache\n\n```diff\n- // Legacy un-cached database query (240ms)\n- const user = await db.users.findUnique({ where: { id } })\n- if (!user) throw new NotFoundError("User missing")\n+ // Edge KV cache with stale-while-revalidate (8ms)\n+ const user = await kv.getOrSet(`user:${id}`, () => (\n+   db.users.findUniqueOrThrow({ where: { id } })\n+ ), { ttl: 3600 })\n```\n\n:::tip\nReduces database connection pool exhaustion during sudden flash traffic.\n:::',
+  },
+  {
     id: 'checklist-launch',
     name: 'Production Launch Checklist',
     description: 'Interactive markdown checklist with completed and pending tasks',

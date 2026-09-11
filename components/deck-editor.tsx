@@ -13,12 +13,21 @@ import {
   Presentation, Search, Sun, Table2, Type, X, Zap, AlignLeft, AlignCenter,
   AlignRight, Bold, Italic, Minus, ChevronDown, Shield, Check, Sparkles,
   Layers, Sliders, Palette, RefreshCw, Copy, CheckCheck, Bot, ExternalLink,
-  Eye, FileCode, Terminal
+  Eye, FileCode, Terminal, Share2, Clock, Play, Pause, RotateCcw, FileDown, Command
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { MermaidRenderer } from '@/components/ui/mermaid-renderer'
+import { CodeBlock } from '@/components/ui/code-block'
+import { CommandPalette } from '@/components/ui/command-palette'
+import {
+  encodeDeckToHash,
+  decodeDeckFromHash,
+  extractSpeakerNotes,
+  generateStandaloneHtml,
+} from '@/lib/export-utils'
 import {
   CALLOUT_CONFIG,
   CALLOUT_STYLES,
@@ -1174,28 +1183,33 @@ function SlideMarkdown({
                 </div>
               ),
               code: ({ children, className: cls }) => {
-                const isBlock = Boolean(cls?.includes('language-'))
+                const rawCode = String(children || '').replace(/\n$/, '')
+                const isMermaid =
+                  cls?.includes('language-mermaid') ||
+                  cls?.includes('mermaid') ||
+                  /^\s*(?:graph\s+(?:TD|LR|TB|RL|BT)|flowchart\s+(?:TD|LR|TB|RL|BT)|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|journey|timeline|quadrantChart)/m.test(rawCode)
+
+                if (isMermaid) {
+                  return (
+                    <MermaidRenderer
+                      chart={rawCode}
+                      isDark={isDark}
+                      fontScale={fontScale}
+                    />
+                  )
+                }
+
+                const isBlock = Boolean(cls?.includes('language-')) || rawCode.includes('\n')
                 if (isBlock) {
                   return (
-                    <code
+                    <CodeBlock
+                      code={rawCode}
+                      className={cls}
+                      fontScale={fontScale}
+                      isDark={isDark}
                       onClick={onSelect ? (e) => { e.stopPropagation(); onSelect({ type: 'code' }) } : undefined}
-                      style={{
-                        display: 'block',
-                        background: 'color-mix(in oklch, var(--color-muted) 80%, transparent)',
-                        borderRadius: s(8),
-                        padding: `${s(14)}px ${s(18)}px`,
-                        fontFamily: '"JetBrains Mono","Fira Code",monospace',
-                        fontSize: s(13),
-                        lineHeight: 1.65,
-                        overflowX: 'auto',
-                        whiteSpace: 'pre',
-                        marginBottom: s(14),
-                        border: '1px solid var(--color-border)',
-                        ...selStyle('code'),
-                      }}
-                    >
-                      {children}
-                    </code>
+                      style={selStyle('code')}
+                    />
                   )
                 }
                 return (
@@ -1204,7 +1218,7 @@ function SlideMarkdown({
                   </code>
                 )
               },
-              pre: ({ children }) => <pre style={{ marginBottom: s(12), overflowX: 'auto' }}>{children}</pre>,
+              pre: ({ children }) => <>{children}</>,
               table: ({ children }) => (
                 <div
                   onClick={onSelect ? (e) => { e.stopPropagation(); onSelect({ type: 'table' }) } : undefined}
@@ -1759,9 +1773,9 @@ function CanvasInspector({
   )
 }
 
-// ─── New Slide Picker Modal (30 Rich Templates) ───────────────────────────────
+// ─── New Slide Picker Modal (Rich Templates + Live High-Definition Preview) ────
 const SLIDE_CATEGORIES = [
-  'All (30)',
+  'All',
   'Basic',
   'Callouts & Notes',
   'Media & Visuals',
@@ -1777,12 +1791,14 @@ function NewSlidePicker({
   onPick: (markdown: string) => void
   onClose: () => void
 }) {
-  const [selectedCat, setSelectedCat] = useState<string>('All (30)')
+  const [selectedCat, setSelectedCat] = useState<string>('All')
   const [search, setSearch] = useState<string>('')
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(SLIDE_TEMPLATES[0]?.id ?? 'blank')
+  const [viewMode, setViewMode] = useState<'split' | 'grid'>('grid')
 
   const filtered = useMemo(() => {
     return SLIDE_TEMPLATES.filter((t) => {
-      const matchCat = selectedCat === 'All (30)' || t.category === selectedCat
+      const matchCat = selectedCat === 'All' || t.category === selectedCat
       const matchSearch =
         !search.trim() ||
         t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -1793,31 +1809,64 @@ function NewSlidePicker({
     })
   }, [selectedCat, search])
 
+  const activeTemplate = useMemo(() => {
+    return filtered.find((t) => t.id === activeTemplateId) ?? filtered[0] ?? SLIDE_TEMPLATES[0]
+  }, [filtered, activeTemplateId])
+
+  const previewSlide = useMemo(() => {
+    if (!activeTemplate) return parseSlides('## Blank Slide\n\nContent')[0]
+    return parseSlides(activeTemplate.markdown)[0] ?? {
+      id: activeTemplate.id,
+      title: activeTemplate.name,
+      body: activeTemplate.markdown,
+      accent: 'bg-primary',
+      raw: activeTemplate.markdown,
+    }
+  }, [activeTemplate])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'Enter' && activeTemplate) {
+        onPick(activeTemplate.markdown)
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeTemplate, onPick, onClose])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4 sm:p-6">
-      <div className="flex h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl border bg-background shadow-2xl animate-in zoom-in-95 duration-150 flex-col md:flex-row">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-3 sm:p-6 animate-in fade-in-0">
+      <div className="flex h-[92vh] w-full max-w-7xl overflow-hidden rounded-2xl border border-border/80 bg-background shadow-2xl animate-in zoom-in-95 duration-150 flex-col md:flex-row">
         {/* Categories Sidebar */}
-        <div className="flex w-full md:w-56 shrink-0 flex-col border-b md:border-b-0 md:border-r bg-muted/20 p-3">
-          <div className="mb-2 px-3 pt-2">
+        <div className="flex w-full md:w-56 shrink-0 flex-col border-b md:border-b-0 md:border-r bg-muted/20 p-3.5">
+          <div className="mb-3 px-2 pt-1">
             <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Slide Templates</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Choose layout or start blank</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{SLIDE_TEMPLATES.length} layouts available</p>
           </div>
 
           <div className="flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-x-visible py-1">
             {SLIDE_CATEGORIES.map((c) => {
-              const count = c === 'All (30)' ? SLIDE_TEMPLATES.length : SLIDE_TEMPLATES.filter((t) => t.category === c).length
+              const count = c === 'All' ? SLIDE_TEMPLATES.length : SLIDE_TEMPLATES.filter((t) => t.category === c).length
+              const isSelected = selectedCat === c
               return (
                 <button
                   key={c}
+                  type="button"
                   onClick={() => setSelectedCat(c)}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors shrink-0 md:shrink ${
-                    selectedCat === c
-                      ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors shrink-0 md:shrink ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                   }`}
                 >
                   <span>{c}</span>
-                  <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${selectedCat === c ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                  <span className={`text-[10px] rounded-full px-2 py-0.5 font-mono ${
+                    isSelected ? 'bg-primary-foreground/20 text-primary-foreground font-bold' : 'bg-muted text-muted-foreground'
+                  }`}>
                     {count}
                   </span>
                 </button>
@@ -1825,136 +1874,283 @@ function NewSlidePicker({
             })}
           </div>
 
-          <div className="mt-auto hidden md:block border-t pt-3 px-1">
+          <div className="mt-auto hidden md:block border-t border-border/60 pt-3 px-1">
             <button
+              type="button"
               onClick={() => {
-                onPick('## New Blank Slide\n\nStart writing here...')
+                onPick('## New Blank Slide\n\nStart writing markdown here...')
                 onClose()
               }}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed p-2.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 p-2.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/40 transition-colors"
             >
               <Plus className="size-3.5 text-primary" />
-              Start from Scratch
+              Blank Canvas
             </button>
           </div>
         </div>
 
         {/* Main Content Area */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Top Bar */}
-          <div className="flex h-14 shrink-0 items-center justify-between border-b px-5 gap-4">
+          {/* Top Search & View Switcher Bar */}
+          <div className="flex h-14 shrink-0 items-center justify-between border-b px-4 md:px-6 gap-3 bg-card/30">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search 30 templates (e.g., callout, image, metric, code, roadmap)..."
+                placeholder="Search templates (e.g. mermaid, diff, metric, callout, roadmap)..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9 w-full rounded-lg border bg-muted/30 pl-9 pr-4 text-xs focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-9 w-full rounded-xl border bg-muted/30 pl-9 pr-8 text-xs focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
                   <X className="size-3.5" />
                 </button>
               )}
             </div>
+
             <div className="flex items-center gap-2">
+              {/* View Mode Toggle */}
+              <div className="hidden sm:flex items-center rounded-lg border bg-muted/30 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('split')}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    viewMode === 'split' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Eye className="size-3.5" />
+                  <span>Live Preview</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <LayoutTemplate className="size-3.5" />
+                  <span>Grid Cards</span>
+                </button>
+              </div>
+
               <button
-                onClick={() => {
-                  onPick('## New Blank Slide\n\nStart writing here...')
-                  onClose()
-                }}
-                className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80 md:hidden"
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Close modal (Esc)"
               >
-                + Blank
-              </button>
-              <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground">
                 <X className="size-4" />
               </button>
             </div>
           </div>
 
-          {/* Templates Grid */}
-          <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-4 md:p-6 bg-muted/10">
-            {filtered.map((t, idx) => {
-              const previewSlide = parseSlides(t.markdown)[0] ?? {
-                id: t.id,
-                title: t.name,
-                body: t.markdown,
-                accent: 'bg-primary',
-                raw: t.markdown,
-              }
-
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    onPick(t.markdown)
-                    onClose()
-                  }}
-                  className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20"
-                >
-                  {/* Real Live Mini Slide Preview Thumbnail */}
-                  <div className="relative w-full overflow-hidden border-b bg-background" style={{ aspectRatio: '16/9' }}>
-                    <SlideCard
-                      slide={previewSlide}
-                      index={idx}
-                      ratio="16/9"
-                      fontScale={0.8}
-                      calloutStyle="enterprise"
-                      theme="dark"
-                      className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none select-none"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent opacity-30 group-hover:opacity-0 transition-opacity pointer-events-none" />
-                    <div className="absolute top-2 right-2 z-10">
-                      <Badge variant="outline" className="text-[9px] font-semibold bg-black/75 text-white/90 backdrop-blur-md border-white/20 shadow-sm">
-                        {t.category}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Template Meta Details */}
-                  <div className="p-3.5 flex-1 flex flex-col justify-between bg-card">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base shrink-0">{t.icon}</span>
-                        <p className="text-xs font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">
-                          {t.name}
+          {viewMode === 'split' ? (
+            /* Split View: Template List on Left, Live Large Slide Preview on Right */
+            <div className="flex flex-1 overflow-hidden flex-col lg:flex-row">
+              {/* Left Column: Scrollable Template Cards */}
+              <div className="w-full lg:w-[380px] shrink-0 border-b lg:border-b-0 lg:border-r overflow-y-auto p-3.5 space-y-2 bg-muted/10">
+                {filtered.map((t) => {
+                  const isSelected = activeTemplate?.id === t.id
+                  return (
+                    <div
+                      key={t.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setActiveTemplateId(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setActiveTemplateId(t.id)
+                        }
+                      }}
+                      className={`group flex items-start gap-3 rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
+                          : 'border-border/60 bg-card hover:border-primary/50 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-lg ${
+                        isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted/70 text-foreground'
+                      }`}>
+                        {t.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-xs font-bold truncate ${isSelected ? 'text-primary' : 'text-foreground group-hover:text-primary'}`}>
+                            {t.name}
+                          </p>
+                          <Badge variant="outline" className="text-[9px] shrink-0 font-semibold px-1.5 py-0 border-border/80">
+                            {t.category}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                          {t.description}
                         </p>
                       </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
-                        {t.description}
-                      </p>
+                    </div>
+                  )
+                })}
+
+                {filtered.length === 0 && (
+                  <div className="py-12 text-center text-xs text-muted-foreground">
+                    No templates matching &quot;{search}&quot;
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Live High-Definition Slide Preview Canvas */}
+              <div className="flex-1 flex flex-col bg-background/60 overflow-y-auto p-4 md:p-6 justify-between">
+                {activeTemplate ? (
+                  <div className="flex flex-col h-full justify-between">
+                    <div>
+                      {/* Active Template Meta Header */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xl">{activeTemplate.icon}</span>
+                          <div>
+                            <h3 className="text-sm font-bold text-foreground">{activeTemplate.name}</h3>
+                            <p className="text-[11px] text-muted-foreground">{activeTemplate.description}</p>
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            onPick(activeTemplate.markdown)
+                            onClose()
+                          }}
+                          className="font-bold shadow-md gap-1.5 shrink-0"
+                        >
+                          <span>Insert Slide</span>
+                          <kbd className="rounded bg-primary-foreground/20 px-1 py-0.2 text-[10px] font-mono">↵</kbd>
+                        </Button>
+                      </div>
+
+                      {/* Live Full Slide Preview Canvas */}
+                      <div className="w-full max-w-3xl mx-auto my-auto flex items-center justify-center p-2">
+                        <SlideCard
+                          slide={previewSlide}
+                          index={0}
+                          total={1}
+                          ratio="16/9"
+                          fontScale={1}
+                          calloutStyle="enterprise"
+                          theme="dark"
+                          className="w-full shadow-2xl border-border/80"
+                        />
+                      </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-border/60 text-[10px] font-semibold text-primary">
-                      <span className="text-muted-foreground group-hover:text-primary transition-colors">16:9 layout</span>
-                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        Insert Slide →
-                      </span>
+                    <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] text-muted-foreground font-mono">
+                      <span>Previewing in 16:9 widescreen layout</span>
+                      <span>Press ↵ Enter to insert slide</span>
                     </div>
                   </div>
-                </button>
-              )
-            })}
-
-            {filtered.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
-                <Search className="size-9 text-muted-foreground/40 mb-3" />
-                <p className="text-sm font-semibold">No templates match &quot;{search}&quot;</p>
-                <p className="text-xs text-muted-foreground mt-1">Try searching another keyword (e.g., metric, code, alert, roadmap).</p>
-                <button
-                  onClick={() => {
-                    setSelectedCat('All (30)')
-                    setSearch('')
-                  }}
-                  className="mt-4 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
-                >
-                  Reset Filter
-                </button>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                    Select a template to view live preview
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Grid View: 3-Column Thumbnails with High-Legibility Scaling */
+            <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-4 md:p-6 bg-muted/10">
+              {filtered.map((t, idx) => {
+                const itemSlide = parseSlides(t.markdown)[0] ?? {
+                  id: t.id,
+                  title: t.name,
+                  body: t.markdown,
+                  accent: 'bg-primary',
+                  raw: t.markdown,
+                }
+
+                return (
+                  <div
+                    key={t.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      onPick(t.markdown)
+                      onClose()
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onPick(t.markdown)
+                        onClose()
+                      }
+                    }}
+                    className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20 cursor-pointer select-none"
+                  >
+                    {/* Live Slide Thumbnail */}
+                    <div className="relative w-full overflow-hidden border-b bg-background" style={{ aspectRatio: '16/9' }}>
+                      <SlideCard
+                        slide={itemSlide}
+                        index={idx}
+                        ratio="16/9"
+                        fontScale={1}
+                        calloutStyle="enterprise"
+                        theme="dark"
+                        className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none select-none"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-transparent opacity-30 group-hover:opacity-0 transition-opacity pointer-events-none" />
+                      <div className="absolute top-2 right-2 z-10">
+                        <Badge variant="outline" className="text-[9px] font-semibold bg-black/75 text-white/90 backdrop-blur-md border-white/20 shadow-sm">
+                          {t.category}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Template Meta Details */}
+                    <div className="p-3.5 flex-1 flex flex-col justify-between bg-card">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base shrink-0">{t.icon}</span>
+                          <p className="text-xs font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                            {t.name}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                          {t.description}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between pt-2 border-t border-border/60 text-[10px] font-semibold text-primary">
+                        <span className="text-muted-foreground group-hover:text-primary transition-colors">16:9 layout</span>
+                        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity font-bold">
+                          Insert Slide →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {filtered.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                  <Search className="size-9 text-muted-foreground/40 mb-3" />
+                  <p className="text-sm font-semibold">No templates match &quot;{search}&quot;</p>
+                  <p className="text-xs text-muted-foreground mt-1">Try searching another keyword (e.g., metric, code, alert, roadmap).</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCat('All')
+                      setSearch('')
+                    }}
+                    className="mt-4 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
+                  >
+                    Reset Filter
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2017,11 +2213,13 @@ const INSERTS = [
   ['Pro Tip', 'Best practice guide', Lightbulb, ':::tip\nAlways validate request schemas strictly at the API gateway layer.\n:::'],
   ['Security Guardrail', 'Compliance requirement', Shield, ':::security\nNever hardcode credentials or secrets in source code.\n:::'],
   ['Informational Note', 'Context & notes', MessageSquare, ':::note\nZero customer-facing downtime expected for cached read requests.\n:::'],
+  ['Mermaid Flowchart', 'Architecture diagram', Network, '```mermaid\ngraph LR\n  Client[Web App] --> Gateway[API Gateway]\n  Gateway --> Auth[Auth Service]\n  Gateway --> Core[Core Engine]\n  Core --> DB[(PostgreSQL)]\n  Core --> Cache[(Redis Cache)]\n```'],
+  ['Mermaid Sequence', 'API & microservice flow', Network, '```mermaid\nsequenceDiagram\n  autonumber\n  actor Client\n  participant Gateway as API Gateway\n  participant Auth as Auth Service\n  participant DB as Database\n\n  Client->>Gateway: POST /api/v1/auth/login\n  Gateway->>Auth: Validate Credentials\n  Auth->>DB: Query User Account\n  DB-->>Auth: User Record\n  Auth-->>Gateway: 200 OK (JWT Token)\n  Gateway-->>Client: { token: "ey..." }\n```'],
+  ['Git Code Diff', 'Refactor & migration diff', Code2, '```diff\n- const user = await db.users.find({ id })\n- if (!user) throw new NotFoundError()\n+ const user = await cache.getOrSet(`user:${id}`, () => (\n+   db.users.findUniqueOrThrow({ where: { id } })\n+ ))\n```'],
+  ['TypeScript Code', 'Code block snippet', Code2, '```typescript\nimport { createClient } from "@company/sdk"\n\nconst client = createClient({ apiKey: process.env.API_KEY })\nconst result = await client.users.list({ status: "active" })\n```'],
   ['KPI Stat Table', 'Comparison metrics table', Table2, '| Metric | Value | QoQ Growth |\n| :--- | :--- | :--- |\n| **Revenue** | **$18.4M** | 🟢 +42% |\n| **Active Users** | **142,000** | 🟢 +68% |'],
   ['Task Checklist', 'Action items list', CheckSquare, '- [x] Security audit signed off\n- [ ] Deploy to staging cluster\n- [ ] Run automated load test'],
-  ['Mermaid Flowchart', 'Architecture diagram', Network, '```mermaid\ngraph LR\n  Client --> Gateway\n  Gateway --> Service\n  Service --> Database[(Postgres)]\n```'],
   ['Remote Image', 'Image with properties', ImageIcon, '![Dashboard Visual|fit:cover|maxH:300|align:center|w:100%|radius:lg|shadow:true](https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200)'],
-  ['TypeScript Code', 'Code block snippet', Code2, '```typescript\nconst result = await client.query({ status: "active" })\n```'],
 ] as const
 
 const insertAt = (v: string, pos: number, s: string) => `${v.slice(0, pos)}${s}${v.slice(pos)}`
@@ -2125,6 +2323,10 @@ export function DeckEditor() {
   const [slash, setSlash] = useState(false)
   const [sourceMode, setSourceMode] = useState<'slide' | 'deck'>('deck')
   const [presenting, setPresenting] = useState(false)
+  const [presenterView, setPresenterView] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [timerRunning, setTimerRunning] = useState(true)
   const [laser, setLaser] = useState(false)
   const [drawing, setDrawing] = useState(false)
   const [transition, setTransition] = useState('Fade')
@@ -2138,6 +2340,38 @@ export function DeckEditor() {
   const splitRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
   const editor = useRef<HTMLTextAreaElement>(null)
+
+  // Timer hook for Presenter View
+  useEffect(() => {
+    if (!presenting || !timerRunning) return
+    const interval = setInterval(() => {
+      setElapsedSeconds((s) => s + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [presenting, timerRunning])
+
+  // Global keyboard shortcuts (Cmd+K / Ctrl+K for Command Palette)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setCommandPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // Auto-load shared deck from URL Hash on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const loaded = decodeDeckFromHash(window.location.hash)
+      if (loaded && loaded.trim()) {
+        setMarkdown(loaded)
+        notify('Loaded presentation from shared URL link!')
+      }
+    }
+  }, [setMarkdown])
 
   // Drag splitter
   const onDragStart = (e: React.PointerEvent) => {
@@ -2194,6 +2428,41 @@ export function DeckEditor() {
     setToastMessage(`${x}`)
     setTimeout(() => setToastMessage(''), 2500)
   }
+
+  const handleShareDeck = useCallback(() => {
+    const hash = encodeDeckToHash(markdown)
+    if (typeof window !== 'undefined') {
+      const shareUrl = `${window.location.origin}${window.location.pathname}#deck=${hash}`
+      navigator.clipboard.writeText(shareUrl)
+      window.location.hash = `deck=${hash}`
+      notify('Share link copied to clipboard!')
+    }
+  }, [markdown])
+
+  const handleExportHtml = useCallback(() => {
+    const deckTitle = slides[0]?.title || 'Presentation'
+    const htmlContent = generateStandaloneHtml(deckTitle, slides, theme)
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${deckTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'presentation'}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Exported standalone offline HTML bundle!')
+  }, [slides, theme])
+
+  const handleExportMarkdown = useCallback(() => {
+    const deckTitle = slides[0]?.title || 'presentation'
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${deckTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'presentation'}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('Downloaded Markdown source file!')
+  }, [markdown, slides])
 
   const insert = useCallback(
     (snippet: string) => {
@@ -2322,23 +2591,66 @@ export function DeckEditor() {
     [selectedEl, sourceMode, slideRaws, active, markdown, handleEditorChange, setCalloutStyle]
   )
 
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60)
+    const secs = totalSeconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
   // ── Presentation Mode ───────────────────────────────────────────────────────
   if (presenting) {
+    const currentNotes = extractSpeakerNotes(current.raw).notes
+    const nextSlide = slides[active + 1]
+
     return (
       <div className="flex min-h-screen flex-col bg-zinc-950 text-white">
-        <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-2">
-          <span className="font-mono text-sm text-white/60 flex items-center gap-2">
-            <Presentation className="size-4 text-primary" />
-            Md2Slide / PRESENTATION
-          </span>
+        <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-sm text-white/80 flex items-center gap-2">
+              <Presentation className="size-4 text-primary" />
+              Md2Slide / {presenterView ? 'PRESENTER VIEW' : 'STAGE PRESENTATION'}
+            </span>
+            {presenterView && (
+              <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-mono">
+                <Clock className="size-3.5 text-primary" />
+                <span className="text-white font-semibold">{formatTime(elapsedSeconds)}</span>
+                <button
+                  type="button"
+                  onClick={() => setTimerRunning((r) => !r)}
+                  className="hover:text-primary transition-colors ml-1"
+                  title={timerRunning ? 'Pause timer' : 'Resume timer'}
+                >
+                  {timerRunning ? <Pause className="size-3" /> : <Play className="size-3" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setElapsedSeconds(0)}
+                  className="hover:text-primary transition-colors"
+                  title="Reset timer"
+                >
+                  <RotateCcw className="size-3" />
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-2">
+            <Button
+              variant={presenterView ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setPresenterView((v) => !v)}
+              className="gap-1.5 text-xs font-semibold"
+            >
+              <Clock className="size-3.5" />
+              {presenterView ? 'Audience View' : 'Presenter View'}
+            </Button>
             <select
               value={transition}
               onChange={(e) => setTransition(e.target.value)}
-              className="rounded border border-white/20 bg-white/5 px-2 py-1 text-sm text-white focus:outline-none"
+              className="rounded border border-white/20 bg-white/5 px-2 py-1 text-xs text-white focus:outline-none"
             >
-              <option value="Fade">Fade Transition</option>
-              <option value="Slide">Slide Transition</option>
+              <option value="Fade">Fade</option>
+              <option value="Slide">Slide</option>
               <option value="None">Instant</option>
             </select>
             <RatioPicker value={ratio} onChange={setRatio} />
@@ -2354,48 +2666,132 @@ export function DeckEditor() {
           </div>
         </header>
 
-        <main
-          className="relative flex flex-1 items-center justify-center overflow-hidden p-8"
-          onPointerMove={(e) => {
-            const r = e.currentTarget.getBoundingClientRect()
-            setCursor({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 })
-          }}
-        >
-          <div className={`relative w-full max-w-6xl transition-all duration-500 ${transition === 'Slide' ? 'animate-in slide-in-from-right-4' : ''}`}>
-            <SlideCard
-              slide={current}
-              index={active}
-              total={slides.length}
-              ratio={activeRatio.ratio}
-              fontScale={fontScale}
-              calloutStyle={calloutStyle}
-              theme="dark"
-              className="w-full"
-            />
-            <div className={`absolute inset-0 ${drawing ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-              <DrawingLayer enabled={drawing} />
+        {presenterView ? (
+          /* Dual-Screen Presenter Dashboard */
+          <main className="flex flex-1 flex-col lg:flex-row gap-6 p-6 overflow-hidden">
+            {/* Left: Main Active Slide */}
+            <div className="flex-1 flex flex-col items-center justify-center min-w-0 bg-white/[0.02] border border-white/10 rounded-2xl p-6 relative">
+              <div className="text-[11px] font-mono text-white/50 mb-2 uppercase tracking-wider self-start">
+                Current Slide ({active + 1} of {slides.length})
+              </div>
+              <div className="w-full max-w-4xl max-h-[68vh] flex items-center justify-center">
+                <SlideCard
+                  slide={current}
+                  index={active}
+                  total={slides.length}
+                  ratio={activeRatio.ratio}
+                  fontScale={fontScale}
+                  calloutStyle={calloutStyle}
+                  theme="dark"
+                  className="w-full shadow-2xl"
+                />
+              </div>
+
+              {/* Slide Navigation Bottom Bar */}
+              <div className="flex items-center gap-3 mt-4">
+                <Button variant="secondary" size="sm" onClick={() => setActive(Math.max(active - 1, 0))}>
+                  <ChevronLeft className="size-4 mr-1" /> Previous
+                </Button>
+                <span className="rounded-lg bg-white/10 px-3.5 py-1 text-sm font-mono tabular-nums">
+                  {active + 1} / {slides.length}
+                </span>
+                <Button variant="secondary" size="sm" onClick={() => setActive(Math.min(active + 1, slides.length - 1))}>
+                  Next <ChevronRight className="size-4 ml-1" />
+                </Button>
+              </div>
             </div>
-          </div>
 
-          {laser && (
-            <div
-              className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_24px_10px_rgba(239,68,68,0.65)]"
-              style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
-            />
-          )}
+            {/* Right: Next Slide Preview & Speaker Notes */}
+            <div className="w-full lg:w-96 flex flex-col gap-4">
+              {/* Up Next Slide Preview */}
+              <div className="flex-1 flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-4 overflow-hidden">
+                <div className="text-[11px] font-mono text-white/60 mb-2 uppercase tracking-wider">
+                  Up Next {nextSlide ? `(Slide ${active + 2})` : '(End of presentation)'}
+                </div>
+                {nextSlide ? (
+                  <div className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-zinc-900" style={{ aspectRatio: '16/9' }}>
+                    <SlideCard
+                      slide={nextSlide}
+                      index={active + 1}
+                      total={slides.length}
+                      ratio="16/9"
+                      fontScale={0.7}
+                      calloutStyle={calloutStyle}
+                      theme="dark"
+                      className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none select-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-xs text-white/40 border border-dashed border-white/10 rounded-xl">
+                    No further slides
+                  </div>
+                )}
+              </div>
 
-          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
-            <Button variant="secondary" size="icon" onClick={() => setActive(Math.max(active - 1, 0))}>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-mono tabular-nums">
-              {active + 1} / {slides.length}
-            </span>
-            <Button variant="secondary" size="icon" onClick={() => setActive(Math.min(active + 1, slides.length - 1))}>
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </main>
+              {/* Speaker Notes */}
+              <div className="flex-1 flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-4 overflow-y-auto min-h-[220px]">
+                <div className="flex items-center justify-between text-[11px] font-mono text-white/60 mb-2 uppercase tracking-wider">
+                  <span>Speaker Notes</span>
+                  <span className="text-[10px] text-white/40">&lt;!-- note: ... --&gt;</span>
+                </div>
+                {currentNotes ? (
+                  <div className="text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap font-sans">
+                    {currentNotes}
+                  </div>
+                ) : (
+                  <div className="text-xs text-white/40 italic py-6 text-center">
+                    No speaker notes for this slide.<br />
+                    Add notes in markdown with <code className="text-[11px] bg-white/10 px-1 py-0.5 rounded text-white/70">&lt;!-- note: speech points --&gt;</code>
+                  </div>
+                )}
+              </div>
+            </div>
+          </main>
+        ) : (
+          /* Standard Fullscreen Stage Presentation */
+          <main
+            className="relative flex flex-1 items-center justify-center overflow-hidden p-8"
+            onPointerMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setCursor({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 })
+            }}
+          >
+            <div className={`relative w-full max-w-6xl transition-all duration-500 ${transition === 'Slide' ? 'animate-in slide-in-from-right-4' : ''}`}>
+              <SlideCard
+                slide={current}
+                index={active}
+                total={slides.length}
+                ratio={activeRatio.ratio}
+                fontScale={fontScale}
+                calloutStyle={calloutStyle}
+                theme="dark"
+                className="w-full"
+              />
+              <div className={`absolute inset-0 ${drawing ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                <DrawingLayer enabled={drawing} />
+              </div>
+            </div>
+
+            {laser && (
+              <div
+                className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_24px_10px_rgba(239,68,68,0.65)]"
+                style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
+              />
+            )}
+
+            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
+              <Button variant="secondary" size="icon" onClick={() => setActive(Math.max(active - 1, 0))}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-mono tabular-nums">
+                {active + 1} / {slides.length}
+              </span>
+              <Button variant="secondary" size="icon" onClick={() => setActive(Math.min(active + 1, slides.length - 1))}>
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </main>
+        )}
       </div>
     )
   }
@@ -2416,13 +2812,36 @@ export function DeckEditor() {
             Md2Slide
           </div>
           <Separator orientation="vertical" className="h-5" />
-          <span className="hidden text-sm font-medium text-muted-foreground sm:inline">Quarterly Review Deck</span>
-          <Badge variant="secondary" className="font-mono text-[10px]">v2.0 Draft</Badge>
+
+          {/* Command Palette Quick Trigger */}
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="hidden sm:flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 hover:bg-muted/70 px-2.5 py-1 text-xs text-muted-foreground transition-colors"
+          >
+            <Search className="size-3.5" />
+            <span>Search commands & slides...</span>
+            <kbd className="ml-1 rounded bg-background px-1.5 py-0.5 text-[10px] font-mono border border-border font-semibold text-foreground">
+              ⌘K
+            </kbd>
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Share Link Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleShareDeck}
+            className="gap-1.5 font-semibold shadow-xs"
+            title="Copy shareable URL link"
+          >
+            <Share2 className="size-3.5 text-primary" />
+            <span className="hidden sm:inline">Share</span>
+          </Button>
+
           {/* Callout Style Selector in Header */}
-          <div className="hidden lg:flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2 py-1">
+          <div className="hidden xl:flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2 py-1">
             <Palette className="size-3 text-muted-foreground" />
             <span className="text-[11px] text-muted-foreground font-medium">Style:</span>
             <select
@@ -2452,14 +2871,22 @@ export function DeckEditor() {
             variant="outline"
             size="sm"
             onClick={() => setAiModalOpen(true)}
-            className="gap-1.5 font-semibold text-primary border-primary/40 hover:bg-primary/10 shadow-xs"
+            className="gap-1.5 font-semibold text-primary border-primary/40 hover:bg-primary/10 shadow-xs hidden md:flex"
           >
             <Sparkles className="size-3.5 text-primary" />
             <span>AI & llms.txt</span>
           </Button>
 
-          <Button variant="outline" size="sm" onClick={() => notify('PDF Export generated')}>
-            <Download className="mr-1.5 size-3.5" />Export
+          {/* Standalone HTML Export */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportHtml}
+            className="gap-1.5 font-medium shadow-xs"
+            title="Download standalone offline HTML presentation"
+          >
+            <Download className="size-3.5" />
+            <span className="hidden md:inline">HTML Export</span>
           </Button>
 
           <Button size="sm" onClick={() => setPresenting(true)} className="font-semibold shadow-sm">
@@ -2717,10 +3144,18 @@ export function DeckEditor() {
           {/* Filmstrip Bottom Bar */}
           <div className="flex h-[108px] shrink-0 items-center gap-3 overflow-x-auto border-t bg-background px-4 py-2.5">
             {slides.map((s, i) => (
-              <button
+              <div
                 key={s.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setActive(i)}
-                className={`relative h-[78px] shrink-0 overflow-hidden rounded-lg border-2 transition-all group ${
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setActive(i)
+                  }
+                }}
+                className={`relative h-[78px] shrink-0 overflow-hidden rounded-lg border-2 transition-all group cursor-pointer select-none ${
                   i === active ? 'border-primary shadow-lg ring-2 ring-primary/40' : 'border-border/60 opacity-60 hover:opacity-100'
                 }`}
                 style={{ aspectRatio: '16/9', width: 'auto' }}
@@ -2737,7 +3172,7 @@ export function DeckEditor() {
                 <span className="absolute bottom-1 right-1 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[8px] font-mono text-white">
                   {String(i + 1).padStart(2, '0')}
                 </span>
-              </button>
+              </div>
             ))}
 
             {/* New Slide Button — Opens 30 Templates Picker */}
@@ -2820,15 +3255,26 @@ export function DeckEditor() {
                 }
 
                 return (
-                  <button
+                  <div
                     key={tpl.name}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       setMarkdown(tpl.markdown)
                       setActive(0)
                       setDeckTemplatesOpen(false)
                       notify(`Loaded ${tpl.name}`)
                     }}
-                    className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setMarkdown(tpl.markdown)
+                        setActive(0)
+                        setDeckTemplatesOpen(false)
+                        notify(`Loaded ${tpl.name}`)
+                      }
+                    }}
+                    className="group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:border-primary hover:shadow-xl hover:-translate-y-1 hover:ring-2 hover:ring-primary/20 cursor-pointer select-none"
                   >
                     {/* Live Slide Thumbnail */}
                     <div className="relative w-full overflow-hidden border-b bg-background" style={{ aspectRatio: '16/9' }}>
@@ -2865,7 +3311,7 @@ export function DeckEditor() {
                         </span>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>
@@ -2895,6 +3341,34 @@ export function DeckEditor() {
           onClose={() => setAiModalOpen(false)}
         />
       )}
+
+      {/* Command Palette Modal (Cmd+K) */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        slides={slides}
+        activeSlide={active}
+        onSelectSlide={(idx) => {
+          setActive(idx)
+          notify(`Jumped to slide ${idx + 1}`)
+        }}
+        onPresent={() => {
+          setPresenterView(false)
+          setPresenting(true)
+        }}
+        onPresenterView={() => {
+          setPresenterView(true)
+          setPresenting(true)
+        }}
+        onShare={handleShareDeck}
+        onExportHtml={handleExportHtml}
+        onExportMarkdown={handleExportMarkdown}
+        onOpenAi={() => setAiModalOpen(true)}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        currentTheme={theme}
+        onSelectRatio={setRatio}
+        onInsert={insert}
+      />
 
       {/* Toast Notification */}
       {toastMessage && (
