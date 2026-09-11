@@ -6,6 +6,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  ...(process.env.TAURI_BUILD === 'true' ? { output: 'export', distDir: 'out' } : {}),
 }
 
 export default nextConfig
