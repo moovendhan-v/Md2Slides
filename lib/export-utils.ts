@@ -229,3 +229,92 @@ export function generateStandaloneHtml(title: string, slides: Array<{ title: str
 </body>
 </html>`
 }
+
+/**
+ * Generates a print-optimized HTML page — one slide per printed page — and
+ * triggers the browser's print dialog once rendering (incl. Mermaid) settles,
+ * so the user can "Save as PDF" from there. Client-side only; no server or
+ * headless-browser dependency needed.
+ */
+export function generatePrintableHtml(
+  title: string,
+  slides: Array<{ title: string; body: string }>,
+  theme: 'dark' | 'light',
+  ratio: string
+): string {
+  const isDark = theme === 'dark'
+  const bgColor = isDark ? '#0b0f19' : '#ffffff'
+  const textColor = isDark ? '#f8fafc' : '#0f172a'
+  const cardBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)'
+  const codeBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
+
+  const [rw, rh] = ratio.split('/').map(Number)
+  const pageWidthIn = 11
+  const pageHeightIn = Number((pageWidthIn * ((rh || 9) / (rw || 16))).toFixed(3))
+
+  const slidesHtml = slides.map((_, i) => `<section class="slide"><div class="slide-inner" data-body="${i}"></div></section>`).join('\n')
+  const bodiesJson = JSON.stringify(slides.map((s) => s.body))
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${title || 'Presentation'}</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<style>
+  @page { size: ${pageWidthIn}in ${pageHeightIn}in; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: ${bgColor}; color: ${textColor}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .slide {
+    width: ${pageWidthIn}in; height: ${pageHeightIn}in;
+    padding: 0.55in 0.85in;
+    page-break-after: always; break-after: page;
+    display: flex; flex-direction: column; justify-content: center;
+    overflow: hidden;
+  }
+  .slide:last-child { page-break-after: auto; }
+  .slide-inner h1 { font-size: 32px; font-weight: 800; margin: 0 0 16px; color: #38bdf8; }
+  .slide-inner h2 { font-size: 25px; font-weight: 700; margin: 0 0 14px; }
+  .slide-inner h3 { font-size: 19px; font-weight: 700; margin: 0 0 12px; }
+  .slide-inner p { font-size: 15px; line-height: 1.6; margin: 0 0 12px; }
+  .slide-inner ul, .slide-inner ol { margin: 0 0 12px 24px; font-size: 15px; line-height: 1.6; }
+  .slide-inner pre { background: ${codeBg}; border: 1px solid ${cardBorder}; padding: 12px; border-radius: 8px; font-family: "JetBrains Mono", Menlo, monospace; font-size: 11px; overflow: hidden; margin: 0 0 12px; }
+  .slide-inner table { width: 100%; border-collapse: collapse; margin: 0 0 14px; font-size: 13px; }
+  .slide-inner th, .slide-inner td { border: 1px solid ${cardBorder}; padding: 8px 10px; text-align: left; }
+  .slide-inner th { background: ${codeBg}; font-weight: 700; }
+  .slide-inner img { max-width: 100%; }
+  .slide-inner blockquote { border-left: 3px solid ${cardBorder}; margin: 0 0 12px; padding: 4px 14px; opacity: 0.85; }
+  @media screen {
+    body { background: #333; padding: 24px 0; }
+    .slide { margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+  }
+</style>
+</head>
+<body>
+${slidesHtml}
+<script>
+  const bodies = ${bodiesJson};
+  mermaid.initialize({ startOnLoad: false, theme: '${isDark ? 'dark' : 'default'}' });
+
+  bodies.forEach((body, i) => {
+    const el = document.querySelector('[data-body="' + i + '"]');
+    el.innerHTML = marked.parse(body || '');
+    el.querySelectorAll('pre code').forEach((block) => {
+      const text = block.textContent.trim();
+      if (/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|journey|timeline)/.test(text)) {
+        const mDiv = document.createElement('div');
+        mDiv.className = 'mermaid';
+        mDiv.textContent = text;
+        block.parentElement.replaceWith(mDiv);
+      }
+    });
+  });
+
+  Promise.resolve(mermaid.run()).finally(() => {
+    setTimeout(() => window.print(), 350);
+  });
+</script>
+</body>
+</html>`
+}

@@ -13,7 +13,7 @@ import {
   Presentation, Search, Sun, Table2, Type, X, Zap, AlignLeft, AlignCenter,
   AlignRight, Bold, Italic, Minus, ChevronDown, Shield, Check, Sparkles,
   Layers, Sliders, Palette, RefreshCw, Copy, CheckCheck, Bot, ExternalLink,
-  Eye, FileCode, Terminal, Share2, Clock, Play, Pause, RotateCcw, FileDown, Command
+  Eye, FileCode, Terminal, Share2, Clock, Play, Pause, RotateCcw, FileDown, Command, GitBranch, Save, List, Folder, GitCompare, Eraser, MonitorX
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,11 +22,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { MermaidRenderer } from '@/components/ui/mermaid-renderer'
 import { CodeBlock } from '@/components/ui/code-block'
 import { CommandPalette } from '@/components/ui/command-palette'
+import { GithubPanel } from '@/components/github-panel'
+import { DiffDialog } from '@/components/diff-dialog'
+import { useGithubSync } from '@/lib/use-github-sync'
+import { computeLineDiff } from '@/lib/diff'
 import {
   encodeDeckToHash,
   decodeDeckFromHash,
   extractSpeakerNotes,
   generateStandaloneHtml,
+  generatePrintableHtml,
 } from '@/lib/export-utils'
 import {
   CALLOUT_CONFIG,
@@ -88,20 +93,40 @@ interface RatioPreset {
   note: string
 }
 
+export interface DeckRecord {
+  id: string
+  title: string
+  /** Content as last synced with GitHub — the diff baseline for this deck. */
+  markdown: string
+  githubRepo?: string
+  githubPath?: string
+  githubSha?: string
+  updatedAt: number
+}
+
 type Store = {
   markdown: string
   active: number
+  /** App chrome (sidebar, toolbar, panels) light/dark. */
   theme: Theme
+  /** Slide preview / presentation / export light/dark — independent of the app chrome. */
+  previewTheme: Theme
   ratio: RatioKey
   fontScale: number
   calloutStyle: CalloutStyle
+  decks: DeckRecord[]
+  activeDeckId: string | null
   setMarkdown: (v: string) => void
   setActive: (v: number) => void
   setTheme: (v: Theme) => void
+  setPreviewTheme: (v: Theme) => void
   setRatio: (v: RatioKey) => void
   setFontScale: (v: number) => void
   setCalloutStyle: (v: CalloutStyle) => void
   addSlide: (body: string) => void
+  upsertDeck: (deck: DeckRecord) => void
+  loadDeck: (id: string) => void
+  removeDeck: (id: string) => void
 }
 
 // ─── Ratio presets ─────────────────────────────────────────────────────────
@@ -798,12 +823,16 @@ const useDeckStore = create<Store>()(persist((set) => ({
   markdown: initialMarkdown,
   active: 0,
   theme: 'dark',
+  previewTheme: 'dark',
   ratio: '16:9' as RatioKey,
   fontScale: 1,
   calloutStyle: 'enterprise' as CalloutStyle,
+  decks: [],
+  activeDeckId: null,
   setMarkdown: (markdown) => set({ markdown }),
   setActive: (active) => set({ active }),
   setTheme: (theme) => set({ theme }),
+  setPreviewTheme: (previewTheme) => set({ previewTheme }),
   setRatio: (ratio) => set({ ratio }),
   setFontScale: (fontScale) => set({ fontScale }),
   setCalloutStyle: (calloutStyle) => set({ calloutStyle }),
@@ -812,7 +841,21 @@ const useDeckStore = create<Store>()(persist((set) => ({
     const parsed = parseSlides(updated)
     return { markdown: updated, active: parsed.length - 1 }
   }),
-}), { name: 'Md2Slide-editor-v8' }))
+  upsertDeck: (deck) => set((s) => {
+    const idx = s.decks.findIndex((d) => d.id === deck.id)
+    const decks = idx >= 0 ? s.decks.map((d, i) => (i === idx ? deck : d)) : [...s.decks, deck]
+    return { decks }
+  }),
+  loadDeck: (id) => set((s) => {
+    const deck = s.decks.find((d) => d.id === id)
+    if (!deck) return {}
+    return { markdown: deck.markdown, activeDeckId: id, active: 0 }
+  }),
+  removeDeck: (id) => set((s) => ({
+    decks: s.decks.filter((d) => d.id !== id),
+    activeDeckId: s.activeDeckId === id ? null : s.activeDeckId,
+  })),
+}), { name: 'Md2Slide-editor-v9' }))
 
 const accentHex = ['#38bdf8', '#4ade80', '#f97316', '#a855f7', '#ec4899', '#14b8a6']
 const CANVAS_W_PX = 1280
@@ -1099,7 +1142,7 @@ function SlideMarkdown({
               h1: ({ children }) => (
                 <h1
                   onClick={onSelect ? () => onSelect({ type: 'heading', fontSize: s(28) }) : undefined}
-                  style={{ marginBottom: s(12), fontWeight: 800, fontSize: s(28), lineHeight: 1.2, color: 'var(--color-foreground)', ...selStyle('heading') }}
+                  style={{ marginBottom: s(12), fontWeight: 800, fontSize: s(28), lineHeight: 1.2, color: 'var(--foreground)', ...selStyle('heading') }}
                 >
                   {children}
                 </h1>
@@ -1107,7 +1150,7 @@ function SlideMarkdown({
               h2: ({ children }) => (
                 <h2
                   onClick={onSelect ? () => onSelect({ type: 'heading', fontSize: s(22) }) : undefined}
-                  style={{ marginBottom: s(10), fontWeight: 700, fontSize: s(22), lineHeight: 1.25, color: 'var(--color-foreground)', ...selStyle('heading') }}
+                  style={{ marginBottom: s(10), fontWeight: 700, fontSize: s(22), lineHeight: 1.25, color: 'var(--foreground)', ...selStyle('heading') }}
                 >
                   {children}
                 </h2>
@@ -1115,7 +1158,7 @@ function SlideMarkdown({
               h3: ({ children }) => (
                 <h3
                   onClick={onSelect ? () => onSelect({ type: 'heading', fontSize: s(18) }) : undefined}
-                  style={{ marginBottom: s(8), fontWeight: 600, fontSize: s(18), lineHeight: 1.3, color: 'var(--color-foreground)', ...selStyle('heading') }}
+                  style={{ marginBottom: s(8), fontWeight: 600, fontSize: s(18), lineHeight: 1.3, color: 'var(--foreground)', ...selStyle('heading') }}
                 >
                   {children}
                 </h3>
@@ -1143,7 +1186,7 @@ function SlideMarkdown({
                 return (
                   <li style={{ marginBottom: s(6), fontSize: s(15), lineHeight: 1.6, display: 'flex', alignItems: 'flex-start', gap: s(8), listStyle: isTask ? 'none' : undefined }}>
                     {isTask && (
-                      <span style={{ width: s(18), height: s(18), borderRadius: s(4), border: `2px solid ${checked ? '#10b981' : 'var(--color-border)'}`, background: checked ? '#10b98122' : 'transparent', flexShrink: 0, marginTop: s(2), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ width: s(18), height: s(18), borderRadius: s(4), border: `2px solid ${checked ? '#10b981' : 'var(--border)'}`, background: checked ? '#10b98122' : 'transparent', flexShrink: 0, marginTop: s(2), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {checked && <svg viewBox="0 0 12 12" fill="none" style={{ width: s(11), height: s(11) }}><path d="M2 6l3 3 5-5" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                       </span>
                     )}
@@ -1202,7 +1245,7 @@ function SlideMarkdown({
                   )
                 }
                 return (
-                  <code style={{ background: 'var(--color-muted)', borderRadius: s(4), padding: `${s(2)}px ${s(6)}px`, fontFamily: '"JetBrains Mono","Fira Code",monospace', fontSize: s(13) }}>
+                  <code style={{ background: 'var(--muted)', borderRadius: s(4), padding: `${s(2)}px ${s(6)}px`, fontFamily: '"JetBrains Mono","Fira Code",monospace', fontSize: s(13) }}>
                     {children}
                   </code>
                 )
@@ -1216,15 +1259,15 @@ function SlideMarkdown({
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: s(14) }}>{children}</table>
                 </div>
               ),
-              thead: ({ children }) => <thead style={{ borderBottom: `2px solid var(--color-border)` }}>{children}</thead>,
+              thead: ({ children }) => <thead style={{ borderBottom: `2px solid var(--border)` }}>{children}</thead>,
               tbody: ({ children }) => <tbody>{children}</tbody>,
-              tr: ({ children }) => <tr style={{ borderBottom: `1px solid color-mix(in oklch, var(--color-border) 50%, transparent)` }}>{children}</tr>,
+              tr: ({ children }) => <tr style={{ borderBottom: `1px solid color-mix(in oklch, var(--border) 50%, transparent)` }}>{children}</tr>,
               th: ({ children }) => (
-                <th style={{ padding: `${s(10)}px ${s(14)}px`, textAlign: 'left', fontWeight: 700, fontSize: s(13), color: 'var(--color-foreground)', background: 'color-mix(in oklch, var(--color-muted) 40%, transparent)' }}>
+                <th style={{ padding: `${s(10)}px ${s(14)}px`, textAlign: 'left', fontWeight: 700, fontSize: s(13), color: 'var(--foreground)', background: 'color-mix(in oklch, var(--muted) 40%, transparent)' }}>
                   {children}
                 </th>
               ),
-              td: ({ children }) => <td style={{ padding: `${s(10)}px ${s(14)}px`, fontSize: s(13), color: 'var(--color-muted-foreground)' }}>{children}</td>,
+              td: ({ children }) => <td style={{ padding: `${s(10)}px ${s(14)}px`, fontSize: s(13), color: 'var(--muted-foreground)' }}>{children}</td>,
               img: ({ src, alt }) => {
                 const imgStr = typeof src === 'string' ? src : ''
                 const altStr = typeof alt === 'string' ? alt : ''
@@ -1285,10 +1328,10 @@ function SlideMarkdown({
                   </span>
                 )
               },
-              hr: () => <hr style={{ margin: `${s(16)}px 0`, border: 'none', borderTop: '1px solid var(--color-border)' }} />,
-              strong: ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--color-foreground)' }}>{children}</strong>,
+              hr: () => <hr style={{ margin: `${s(16)}px 0`, border: 'none', borderTop: '1px solid var(--border)' }} />,
+              strong: ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--foreground)' }}>{children}</strong>,
               em: ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
-              a: ({ href, children }) => <a href={href} style={{ color: 'var(--color-primary)', textDecoration: 'underline' }} target="_blank" rel="noopener noreferrer">{children}</a>,
+              a: ({ href, children }) => <a href={href} style={{ color: 'var(--primary)', textDecoration: 'underline' }} target="_blank" rel="noopener noreferrer">{children}</a>,
             }}
           >
             {seg.data}
@@ -1355,7 +1398,11 @@ function SlideCard({
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-hidden rounded-xl border border-border shadow-xl ${className}`}
+      // `dark`/`light` here re-scopes the --color-* CSS variables for just this
+      // subtree, so the slide can render in a theme independent of the app chrome's
+      // <html> class (CSS custom properties inherit down the DOM, so this wins
+      // locally without touching the rest of the page).
+      className={`relative overflow-hidden rounded-xl border border-border shadow-xl ${isDark ? 'dark' : 'light'} ${className}`}
       style={{ aspectRatio: ratio }}
     >
       <div
@@ -1369,8 +1416,8 @@ function SlideCard({
           left: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--color-card)',
-          color: 'var(--color-card-foreground)',
+          background: 'var(--card)',
+          color: 'var(--card-foreground)',
           overflow: 'hidden',
           fontFamily: 'system-ui,-apple-system,sans-serif',
         }}
@@ -1401,7 +1448,7 @@ function SlideCard({
               fontWeight: 800,
               lineHeight: 1.15,
               letterSpacing: '-0.025em',
-              color: 'var(--color-foreground)',
+              color: 'var(--foreground)',
               margin: 0,
               cursor: onSelectElement ? 'pointer' : 'default',
               outline: onSelectElement && selectedElement?.type === 'heading' ? `2px solid ${accentColor}` : 'none',
@@ -1412,7 +1459,7 @@ function SlideCard({
             {safeSlide.title}
           </h2>
         </div>
-        <div style={{ flex: 1, overflow: 'hidden', padding: `0 ${s(60)}px ${s(32)}px`, color: 'var(--color-muted-foreground)' }}>
+        <div style={{ flex: 1, overflow: 'hidden', padding: `0 ${s(60)}px ${s(32)}px`, color: 'var(--muted-foreground)' }}>
           <SlideMarkdown
             body={safeSlide.body}
             fontScale={fontScale}
@@ -2146,53 +2193,137 @@ function NewSlidePicker({
   )
 }
 
-// ─── Drawing Layer ────────────────────────────────────────────────────────────
-function DrawingLayer({ enabled }: { enabled: boolean }) {
-  const ref = useRef<HTMLCanvasElement>(null)
+// ─── Presentation Annotation Layer — laser pointer & pen, both self-fading ────
+// Mirrors the iPad/macOS Keynote laser & draw tools: the laser leaves a
+// glowing trail that fades within ~2.5s, and pen strokes fade the same way
+// a few seconds after being drawn, so nothing lingers on screen.
+type PresentTool = 'none' | 'laser' | 'draw'
+
+function PresentationAnnotationLayer({ tool, color, clearSignal }: { tool: PresentTool; color: string; clearSignal: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const pointsRef = useRef<Array<{ x: number; y: number; t: number; stroke: number }>>([])
+  const strokeIdRef = useRef(0)
+  const drawingRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+
   useEffect(() => {
-    const c = ref.current
-    if (!c || !enabled) return
-    const ctx = c.getContext('2d')
+    pointsRef.current = []
+  }, [clearSignal])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
     if (!ctx) return
+
+    const FADE_MS = 2500
+
     const resize = () => {
-      c.width = c.clientWidth * devicePixelRatio
-      c.height = c.clientHeight * devicePixelRatio
-      ctx.scale(devicePixelRatio, devicePixelRatio)
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = Math.max(1, rect.width * devicePixelRatio)
+      canvas.height = Math.max(1, rect.height * devicePixelRatio)
     }
     resize()
-    let drawing = false
-    const pt = (e: PointerEvent) => {
-      const r = c.getBoundingClientRect()
-      return [e.clientX - r.left, e.clientY - r.top] as const
+    window.addEventListener('resize', resize)
+
+    const render = () => {
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const now = performance.now()
+      pointsRef.current = pointsRef.current.filter((p) => now - p.t < FADE_MS)
+
+      const strokes = new Map<number, typeof pointsRef.current>()
+      for (const p of pointsRef.current) {
+        const list = strokes.get(p.stroke) ?? []
+        list.push(p)
+        strokes.set(p.stroke, list)
+      }
+
+      for (const pts of strokes.values()) {
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1]
+          const b = pts[i]
+          const opacity = Math.max(0, 1 - (now - b.t) / FADE_MS)
+          if (opacity <= 0) continue
+          ctx.globalAlpha = opacity
+          ctx.strokeStyle = color
+          ctx.lineWidth = tool === 'laser' ? 4 : 3
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          ctx.beginPath()
+          ctx.moveTo(a.x, a.y)
+          ctx.lineTo(b.x, b.y)
+          ctx.stroke()
+        }
+        if (tool === 'laser' && pts.length) {
+          const head = pts[pts.length - 1]
+          const opacity = Math.max(0, 1 - (now - head.t) / FADE_MS)
+          if (opacity > 0) {
+            ctx.globalAlpha = opacity
+            ctx.beginPath()
+            ctx.fillStyle = color
+            ctx.shadowColor = color
+            ctx.shadowBlur = 18
+            ctx.arc(head.x, head.y, 6, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.shadowBlur = 0
+          }
+        }
+      }
+      ctx.globalAlpha = 1
+      rafRef.current = requestAnimationFrame(render)
     }
-    const dn = (e: PointerEvent) => {
-      drawing = true
-      const [x, y] = pt(e)
-      ctx.beginPath()
-      ctx.moveTo(x, y)
+    rafRef.current = requestAnimationFrame(render)
+
+    const getPoint = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect()
+      return { x: e.clientX - r.left, y: e.clientY - r.top }
     }
-    const mv = (e: PointerEvent) => {
-      if (!drawing) return
-      const [x, y] = pt(e)
-      ctx.lineTo(x, y)
-      ctx.strokeStyle = '#f97316'
-      ctx.lineWidth = 3
-      ctx.lineCap = 'round'
-      ctx.stroke()
+    const onMove = (e: PointerEvent) => {
+      const { x, y } = getPoint(e)
+      if (tool === 'laser') {
+        pointsRef.current.push({ x, y, t: performance.now(), stroke: 0 })
+      } else if (tool === 'draw' && drawingRef.current) {
+        pointsRef.current.push({ x, y, t: performance.now(), stroke: strokeIdRef.current })
+      }
     }
-    const up = () => {
-      drawing = false
+    const onDown = (e: PointerEvent) => {
+      if (tool !== 'draw' || e.target !== canvas) return
+      drawingRef.current = true
+      strokeIdRef.current += 1
+      const { x, y } = getPoint(e)
+      pointsRef.current.push({ x, y, t: performance.now(), stroke: strokeIdRef.current })
     }
-    c.addEventListener('pointerdown', dn)
-    c.addEventListener('pointermove', mv)
-    c.addEventListener('pointerup', up)
+    const onUp = () => {
+      drawingRef.current = false
+    }
+
+    // Listen on window, not the canvas: in laser mode the canvas has
+    // pointer-events:none (so it doesn't block clicks on the slide beneath),
+    // which also means it never receives real pointer events itself.
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointerup', onUp)
+
     return () => {
-      c.removeEventListener('pointerdown', dn)
-      c.removeEventListener('pointermove', mv)
-      c.removeEventListener('pointerup', up)
+      window.removeEventListener('resize', resize)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointerup', onUp)
     }
-  }, [enabled])
-  return <canvas ref={ref} className={`absolute inset-0 h-full w-full ${enabled ? 'pointer-events-auto' : 'pointer-events-none'}`} aria-hidden="true" />
+  }, [tool, color])
+
+  if (tool === 'none') return null
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 h-full w-full"
+      style={{ pointerEvents: tool === 'draw' ? 'auto' : 'none', cursor: tool === 'draw' ? 'crosshair' : 'none' }}
+      aria-hidden="true"
+    />
+  )
 }
 
 // ─── Quick Inserts Toolbar ───────────────────────────────────────────────────
@@ -2290,16 +2421,22 @@ export function DeckEditor() {
     markdown,
     active,
     theme,
+    previewTheme,
     ratio,
     fontScale,
     calloutStyle,
     setMarkdown,
     setActive,
     setTheme,
+    setPreviewTheme,
     setRatio,
     setFontScale,
     setCalloutStyle,
     addSlide,
+    decks,
+    activeDeckId,
+    upsertDeck,
+    loadDeck,
   } = useDeckStore()
 
   const slides = useMemo(() => parseSlides(markdown), [markdown])
@@ -2316,14 +2453,123 @@ export function DeckEditor() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [timerRunning, setTimerRunning] = useState(true)
-  const [laser, setLaser] = useState(false)
-  const [drawing, setDrawing] = useState(false)
+  const [presentTool, setPresentTool] = useState<PresentTool>('none')
+  const [penColor, setPenColor] = useState('#f97316')
+  const [clearSignal, setClearSignal] = useState(0)
+  const [blackout, setBlackout] = useState(false)
   const [transition, setTransition] = useState('Fade')
-  const [cursor, setCursor] = useState({ x: 50, y: 50 })
   const [toastMessage, setToastMessage] = useState('')
   const [splitPct, setSplitPct] = useState(48)
   const [selectedEl, setSelectedEl] = useState<SelectedElement>({ type: null })
   const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [githubOpen, setGithubOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const github = useGithubSync()
+
+  const deckIdFor = (repoFullName: string, path: string) => `${repoFullName}:${path}`
+  const titleFor = (path: string) => path.split('/').pop()?.replace(/\.md$/i, '') || path
+
+  const activeDeck = useMemo(() => decks.find((d) => d.id === activeDeckId) ?? null, [decks, activeDeckId])
+
+  const [deckViewMode, setDeckViewMode] = useState<'flat' | 'folders'>('folders')
+  const [previewMode, setPreviewMode] = useState<'preview' | 'diff'>('preview')
+
+  const liveDiff = useMemo(
+    () => (activeDeck?.githubPath ? computeLineDiff(activeDeck.markdown, markdown) : []),
+    [activeDeck, markdown]
+  )
+  const liveDiffAdded = useMemo(() => liveDiff.filter((l) => l.type === 'add').length, [liveDiff])
+  const liveDiffRemoved = useMemo(() => liveDiff.filter((l) => l.type === 'remove').length, [liveDiff])
+
+  useEffect(() => {
+    setPreviewMode('preview')
+  }, [activeDeckId])
+
+  const deckFolders = useMemo(() => {
+    const groups = new Map<string, DeckRecord[]>()
+    for (const deck of decks) {
+      const folder = deck.githubPath?.includes('/') ? deck.githubPath.slice(0, deck.githubPath.lastIndexOf('/')) : deck.githubRepo ? '(root)' : 'Local'
+      const list = groups.get(folder) ?? []
+      list.push(deck)
+      groups.set(folder, list)
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [decks])
+
+  const handleFileOpened = useCallback(
+    (path: string, content: string, sha: string) => {
+      if (!github.repo) return
+      const id = deckIdFor(github.repo.fullName, path)
+      upsertDeck({ id, title: titleFor(path), markdown: content, githubRepo: github.repo.fullName, githubPath: path, githubSha: sha, updatedAt: Date.now() })
+      setMarkdown(content)
+      loadDeck(id)
+    },
+    [github.repo, upsertDeck, setMarkdown, loadDeck]
+  )
+
+  const handleFilesImported = useCallback(
+    (items: { path: string; content: string; sha: string }[]) => {
+      if (!github.repo) return
+      for (const { path, content, sha } of items) {
+        const id = deckIdFor(github.repo.fullName, path)
+        upsertDeck({ id, title: titleFor(path), markdown: content, githubRepo: github.repo.fullName, githubPath: path, githubSha: sha, updatedAt: Date.now() })
+      }
+    },
+    [github.repo, upsertDeck]
+  )
+
+  // Warm the connection state as soon as the editor mounts so the toolbar
+  // can show "Sync" immediately instead of waiting for the panel to open.
+  useEffect(() => {
+    github.init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync always goes through a diff review — see <DiffDialog> below.
+  const [diffState, setDiffState] = useState<{ path: string; repoFullName: string; oldContent: string; newContent: string } | null>(null)
+
+  const handleSyncClick = useCallback(() => {
+    if (!activeDeck?.githubPath || !activeDeck.githubRepo) return
+    setDiffState({ path: activeDeck.githubPath, repoFullName: activeDeck.githubRepo, oldContent: activeDeck.markdown, newContent: markdown })
+  }, [activeDeck, markdown])
+
+  const handleConfirmCommit = useCallback(async () => {
+    if (!diffState) return
+    setSyncing(true)
+    try {
+      const id = deckIdFor(diffState.repoFullName, diffState.path)
+      const existing = decks.find((d) => d.id === id)
+      const sha = await github.saveFile(diffState.path, diffState.newContent, existing?.githubSha)
+      upsertDeck({
+        id,
+        title: existing?.title ?? titleFor(diffState.path),
+        markdown: diffState.newContent,
+        githubRepo: diffState.repoFullName,
+        githubPath: diffState.path,
+        githubSha: sha,
+        updatedAt: Date.now(),
+      })
+      notify(`Synced to ${diffState.repoFullName}/${diffState.path}`)
+      setDiffState(null)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }, [diffState, decks, github, upsertDeck])
+
+  // Used by the GitHub panel's own save bar when overwriting a file that's
+  // already tracked as a deck — routes through the same diff review.
+  const handleRequestSync = useCallback(
+    (path: string) => {
+      if (!github.repo) return
+      const id = deckIdFor(github.repo.fullName, path)
+      const deck = decks.find((d) => d.id === id)
+      const oldContent = deck?.markdown ?? ''
+      setDiffState({ path, repoFullName: github.repo.fullName, oldContent, newContent: markdown })
+    },
+    [github.repo, decks, markdown]
+  )
   const [editorViewMode, setEditorViewMode] = useState<'raw' | 'color'>('raw')
 
   const splitRef = useRef<HTMLDivElement>(null)
@@ -2410,7 +2656,13 @@ export function DeckEditor() {
   )
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
+    // Explicitly set both classes — globals.css has a `@media (prefers-color-scheme:
+    // dark) { :root:not(.light) {...} }` fallback for pages with no toggle. Without
+    // adding `.light` here, that media query keeps forcing dark vars on systems/
+    // browsers set to dark, even after the user picks light in-app.
+    const root = document.documentElement
+    root.classList.toggle('dark', theme === 'dark')
+    root.classList.toggle('light', theme === 'light')
   }, [theme])
 
   const notify = (x: string) => {
@@ -2430,7 +2682,7 @@ export function DeckEditor() {
 
   const handleExportHtml = useCallback(() => {
     const deckTitle = slides[0]?.title || 'Presentation'
-    const htmlContent = generateStandaloneHtml(deckTitle, slides, theme)
+    const htmlContent = generateStandaloneHtml(deckTitle, slides, previewTheme)
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -2439,7 +2691,21 @@ export function DeckEditor() {
     a.click()
     URL.revokeObjectURL(url)
     notify('Exported standalone offline HTML bundle!')
-  }, [slides, theme])
+  }, [slides, previewTheme])
+
+  const handleExportPdf = useCallback(() => {
+    const deckTitle = slides[0]?.title || 'Presentation'
+    const htmlContent = generatePrintableHtml(deckTitle, slides, previewTheme, activeRatio.ratio)
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const win = window.open(url, '_blank')
+    if (!win) {
+      notify('Allow popups to export as PDF')
+    } else {
+      notify('Opening print dialog — choose "Save as PDF" as the destination')
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }, [slides, previewTheme, activeRatio])
 
   const handleExportMarkdown = useCallback(() => {
     const deckTitle = slides[0]?.title || 'presentation'
@@ -2477,6 +2743,11 @@ export function DeckEditor() {
       if (e.key === 'ArrowRight' || e.key === ' ') setActive(Math.min(active + 1, slides.length - 1))
       if (e.key === 'ArrowLeft') setActive(Math.max(active - 1, 0))
       if (e.key === 'Escape') setPresenting(false)
+      const k = e.key.toLowerCase()
+      if (k === 'l') setPresentTool((t) => (t === 'laser' ? 'none' : 'laser'))
+      if (k === 'd') setPresentTool((t) => (t === 'draw' ? 'none' : 'draw'))
+      if (k === 'c') setClearSignal((s) => s + 1)
+      if (k === 'b') setBlackout((b) => !b)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -2643,12 +2914,55 @@ export function DeckEditor() {
               <option value="None">Instant</option>
             </select>
             <RatioPicker value={ratio} onChange={setRatio} />
-            <Button variant={laser ? 'secondary' : 'ghost'} size="sm" onClick={() => setLaser(!laser)}>
-              <Zap className="mr-1 size-3.5" />Laser
+
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/15 p-0.5">
+              <Button
+                variant={presentTool === 'laser' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPresentTool((t) => (t === 'laser' ? 'none' : 'laser'))}
+                title="Laser pointer (L)"
+              >
+                <Zap className="mr-1 size-3.5" />Laser
+              </Button>
+              <Button
+                variant={presentTool === 'draw' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPresentTool((t) => (t === 'draw' ? 'none' : 'draw'))}
+                title="Draw — fades after a few seconds (D)"
+              >
+                <Pencil className="mr-1 size-3.5" />Draw
+              </Button>
+            </div>
+
+            {presentTool === 'draw' && (
+              <div className="flex items-center gap-1 rounded-lg border border-white/15 px-2 py-1">
+                {['#f97316', '#ef4444', '#3b82f6', '#22c55e', '#eab308', '#ffffff'].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setPenColor(c)}
+                    title={c}
+                    className={`size-4 rounded-full border-2 transition-transform ${penColor === c ? 'scale-110 border-white' : 'border-transparent'}`}
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {presentTool !== 'none' && (
+              <Button variant="ghost" size="sm" onClick={() => setClearSignal((s) => s + 1)} title="Clear annotations (C)">
+                <Eraser className="mr-1 size-3.5" />Clear
+              </Button>
+            )}
+
+            <Button
+              variant={blackout ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setBlackout((b) => !b)}
+              title="Blackout screen — blank it to refocus the audience (B)"
+            >
+              <MonitorX className="mr-1 size-3.5" />Blackout
             </Button>
-            <Button variant={drawing ? 'secondary' : 'ghost'} size="sm" onClick={() => setDrawing(!drawing)}>
-              <Pencil className="mr-1 size-3.5" />Draw
-            </Button>
+
             <Button variant="secondary" size="sm" onClick={() => setPresenting(false)}>
               <X className="mr-1 size-3.5" />Exit
             </Button>
@@ -2738,47 +3052,43 @@ export function DeckEditor() {
           </main>
         ) : (
           /* Standard Fullscreen Stage Presentation */
-          <main
-            className="relative flex flex-1 items-center justify-center overflow-hidden p-8"
-            onPointerMove={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              setCursor({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 })
-            }}
-          >
-            <div className={`relative w-full max-w-6xl transition-all duration-500 ${transition === 'Slide' ? 'animate-in slide-in-from-right-4' : ''}`}>
-              <SlideCard
-                slide={current}
-                index={active}
-                total={slides.length}
-                ratio={activeRatio.ratio}
-                fontScale={fontScale}
-                calloutStyle={calloutStyle}
-                theme="dark"
-                className="w-full"
-              />
-              <div className={`absolute inset-0 ${drawing ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-                <DrawingLayer enabled={drawing} />
-              </div>
-            </div>
+          <main className="relative flex flex-1 items-center justify-center overflow-hidden p-8">
+            {blackout ? (
+              <button
+                onClick={() => setBlackout(false)}
+                className="absolute inset-0 flex items-center justify-center bg-black text-xs font-medium text-white/30 transition-colors hover:text-white/50"
+              >
+                Screen blanked — click, or press B, to resume
+              </button>
+            ) : (
+              <>
+                <div className={`relative w-full max-w-6xl transition-all duration-500 ${transition === 'Slide' ? 'animate-in slide-in-from-right-4' : ''}`}>
+                  <SlideCard
+                    slide={current}
+                    index={active}
+                    total={slides.length}
+                    ratio={activeRatio.ratio}
+                    fontScale={fontScale}
+                    calloutStyle={calloutStyle}
+                    theme="dark"
+                    className="w-full"
+                  />
+                  <PresentationAnnotationLayer tool={presentTool} color={penColor} clearSignal={clearSignal} />
+                </div>
 
-            {laser && (
-              <div
-                className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_24px_10px_rgba(239,68,68,0.65)]"
-                style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
-              />
+                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
+                  <Button variant="secondary" size="icon" onClick={() => setActive(Math.max(active - 1, 0))}>
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-mono tabular-nums">
+                    {active + 1} / {slides.length}
+                  </span>
+                  <Button variant="secondary" size="icon" onClick={() => setActive(Math.min(active + 1, slides.length - 1))}>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </>
             )}
-
-            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
-              <Button variant="secondary" size="icon" onClick={() => setActive(Math.max(active - 1, 0))}>
-                <ChevronLeft className="size-4" />
-              </Button>
-              <span className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-mono tabular-nums">
-                {active + 1} / {slides.length}
-              </span>
-              <Button variant="secondary" size="icon" onClick={() => setActive(Math.min(active + 1, slides.length - 1))}>
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
           </main>
         )}
       </div>
@@ -2878,11 +3188,75 @@ export function DeckEditor() {
             <span className="hidden md:inline">HTML Export</span>
           </Button>
 
+          {/* Print-to-PDF Export */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPdf}
+            className="gap-1.5 font-medium shadow-xs"
+            title="Export as PDF (one slide per page, via print dialog)"
+          >
+            <FileDown className="size-3.5" />
+            <span className="hidden md:inline">PDF Export</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setGithubOpen(true)}
+            className="gap-1.5 font-medium shadow-xs"
+            title={github.repo ? `Connected to ${github.repo.fullName}` : 'Connect a GitHub repository'}
+          >
+            <GitBranch className="size-3.5" />
+            <span className="hidden md:inline">{github.repo ? github.repo.name : 'GitHub'}</span>
+          </Button>
+
+          {activeDeck?.githubPath && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSyncClick}
+              disabled={syncing || activeDeck.markdown === markdown}
+              className="gap-1.5 font-semibold shadow-xs"
+              title={
+                activeDeck.markdown === markdown
+                  ? 'No changes to sync'
+                  : `Review and commit changes to ${activeDeck.githubRepo}/${activeDeck.githubPath}`
+              }
+            >
+              {syncing ? <RefreshCw className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              <span className="hidden lg:inline">Sync</span>
+            </Button>
+          )}
+
           <Button size="sm" onClick={() => setPresenting(true)} className="font-semibold shadow-sm">
             <MonitorPlay className="mr-1.5 size-3.5" />Present
           </Button>
         </div>
       </header>
+
+      <GithubPanel
+        open={githubOpen}
+        onClose={() => setGithubOpen(false)}
+        markdown={markdown}
+        deckTitle={slides[0]?.title ?? 'presentation'}
+        onFileOpened={handleFileOpened}
+        onFilesImported={handleFilesImported}
+        onRequestSync={handleRequestSync}
+        notify={notify}
+        github={github}
+      />
+
+      <DiffDialog
+        open={diffState !== null}
+        path={diffState?.path ?? ''}
+        repoFullName={diffState?.repoFullName ?? ''}
+        oldContent={diffState?.oldContent ?? ''}
+        newContent={diffState?.newContent ?? ''}
+        committing={syncing}
+        onCancel={() => setDiffState(null)}
+        onConfirm={handleConfirmCommit}
+      />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left Navigation Sidebar */}
@@ -2911,21 +3285,71 @@ export function DeckEditor() {
             <Separator />
 
             <div className="flex flex-col gap-2 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">My Decks</span>
-              {[
-                { title: 'Quarterly Review', count: slides.length },
-                { title: 'Product Architecture', count: 6 },
-                { title: 'Security & Compliance', count: 8 },
-              ].map((d, i) => (
-                <button
-                  key={d.title}
-                  onClick={() => i === 0 && setMarkdown(initialMarkdown)}
-                  className="rounded-lg p-2 text-left text-xs hover:bg-muted transition-colors"
-                >
-                  <p className="font-semibold text-foreground">{d.title}</p>
-                  <p className="text-[10px] text-muted-foreground">{d.count} slides · saved locally</p>
-                </button>
-              ))}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">My Decks</span>
+                {decks.length > 0 && (
+                  <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+                    <button
+                      onClick={() => setDeckViewMode('flat')}
+                      title="Flat list"
+                      className={`rounded p-1 ${deckViewMode === 'flat' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
+                    >
+                      <List className="size-3" />
+                    </button>
+                    <button
+                      onClick={() => setDeckViewMode('folders')}
+                      title="Group by folder"
+                      className={`rounded p-1 ${deckViewMode === 'folders' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
+                    >
+                      <Folder className="size-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {decks.length === 0 && (
+                <p className="rounded-lg bg-muted/40 p-2 text-[11px] text-muted-foreground">
+                  No imported decks yet. Use GitHub → Browse entire repo → Import to bring decks in.
+                </p>
+              )}
+
+              {decks.length > 0 && deckViewMode === 'flat' &&
+                decks.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => loadDeck(d.id)}
+                    className={`rounded-lg p-2 text-left text-xs transition-colors hover:bg-muted ${
+                      activeDeckId === d.id ? 'bg-primary/10 text-primary' : ''
+                    }`}
+                  >
+                    <p className="truncate font-semibold text-foreground">{d.title}</p>
+                    <p className="truncate text-[10px] text-muted-foreground">
+                      {d.githubRepo ? `${d.githubRepo} · ${d.githubPath}` : 'saved locally'}
+                    </p>
+                  </button>
+                ))}
+
+              {decks.length > 0 && deckViewMode === 'folders' &&
+                deckFolders.map(([folder, items]) => (
+                  <div key={folder} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5 px-1 py-0.5">
+                      <Folder className="size-3 shrink-0 text-amber-500" />
+                      <span className="truncate text-[10px] font-semibold text-muted-foreground">{folder}</span>
+                    </div>
+                    {items.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => loadDeck(d.id)}
+                        className={`ml-3.5 rounded-lg p-2 text-left text-xs transition-colors hover:bg-muted ${
+                          activeDeckId === d.id ? 'bg-primary/10 text-primary' : ''
+                        }`}
+                      >
+                        <p className="truncate font-semibold text-foreground">{d.title}</p>
+                        <p className="truncate text-[10px] text-muted-foreground">{d.githubPath?.split('/').pop() ?? 'saved locally'}</p>
+                      </button>
+                    ))}
+                  </div>
+                ))}
             </div>
 
             <div className="mt-auto p-3 border-t bg-muted/20">
@@ -3083,9 +3507,45 @@ export function DeckEditor() {
               <section className="flex min-h-0 flex-1 flex-col bg-muted/15 overflow-hidden">
                 <div className="flex h-9 shrink-0 items-center justify-between border-b px-3 bg-muted/20">
                   <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                    <Sparkles className="size-3.5 text-amber-500" />Live Interactive Preview
+                    <Sparkles className="size-3.5 text-amber-500" />{previewMode === 'diff' ? 'Diff vs GitHub' : 'Live Interactive Preview'}
                   </span>
                   <div className="flex items-center gap-2">
+                    {previewMode === 'preview' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-6"
+                        onClick={() => setPreviewTheme(previewTheme === 'dark' ? 'light' : 'dark')}
+                        title={`Preview theme: ${previewTheme === 'dark' ? 'Dark' : 'Light'} (independent of app theme)`}
+                      >
+                        {previewTheme === 'dark' ? <Sun className="size-3.5 text-amber-400" /> : <Moon className="size-3.5 text-indigo-500" />}
+                      </Button>
+                    )}
+                    {activeDeck?.githubPath && (
+                      <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+                        <button
+                          onClick={() => setPreviewMode('preview')}
+                          title="Preview"
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${previewMode === 'preview' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => setPreviewMode('diff')}
+                          title="Diff against last synced version"
+                          className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${previewMode === 'diff' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
+                        >
+                          <GitCompare className="size-3" />
+                          Diff
+                          {(liveDiffAdded > 0 || liveDiffRemoved > 0) && (
+                            <span className="font-mono">
+                              <span className="text-emerald-500">+{liveDiffAdded}</span>{' '}
+                              <span className="text-red-500">-{liveDiffRemoved}</span>
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )}
                     {selectedEl.type && (
                       <Badge variant="secondary" className="text-[10px] font-medium text-primary">
                         Inspecting {selectedEl.type}
@@ -3097,20 +3557,47 @@ export function DeckEditor() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 flex items-center justify-center">
-                  <SlideCard
-                    slide={current}
-                    index={active}
-                    total={slides.length}
-                    ratio={activeRatio.ratio}
-                    fontScale={fontScale}
-                    calloutStyle={calloutStyle}
-                    theme={theme}
-                    className="w-full max-w-5xl"
-                    onSelectElement={(el) => setSelectedEl(el)}
-                    selectedElement={selectedEl}
-                  />
-                </div>
+                {previewMode === 'diff' && activeDeck?.githubPath ? (
+                  <div className="min-h-0 flex-1 overflow-auto bg-card/30 p-4 font-mono text-xs leading-relaxed">
+                    <p className="mb-3 text-[11px] text-muted-foreground">
+                      Comparing against last synced <span className="font-semibold text-foreground">{activeDeck.githubRepo}/{activeDeck.githubPath}</span>
+                    </p>
+                    {liveDiffAdded === 0 && liveDiffRemoved === 0 ? (
+                      <p className="text-muted-foreground">No changes since the last sync.</p>
+                    ) : (
+                      liveDiff.map((line, i) => (
+                        <div
+                          key={i}
+                          className={
+                            line.type === 'add'
+                              ? 'whitespace-pre-wrap bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : line.type === 'remove'
+                                ? 'whitespace-pre-wrap bg-red-500/10 text-red-500'
+                                : 'whitespace-pre-wrap text-muted-foreground'
+                          }
+                        >
+                          <span className="mr-2 inline-block w-3 select-none">{line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}</span>
+                          {line.text || ' '}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 flex items-center justify-center">
+                    <SlideCard
+                      slide={current}
+                      index={active}
+                      total={slides.length}
+                      ratio={activeRatio.ratio}
+                      fontScale={fontScale}
+                      calloutStyle={calloutStyle}
+                      theme={previewTheme}
+                      className="w-full max-w-5xl"
+                      onSelectElement={(el) => setSelectedEl(el)}
+                      selectedElement={selectedEl}
+                    />
+                  </div>
+                )}
               </section>
 
               {/* Inspector Pane */}
@@ -3155,7 +3642,7 @@ export function DeckEditor() {
                   ratio="16/9"
                   fontScale={fontScale}
                   calloutStyle={calloutStyle}
-                  theme={theme}
+                  theme={previewTheme}
                   className="absolute inset-0 h-full w-full rounded-none border-0 shadow-none pointer-events-none"
                 />
                 <span className="absolute bottom-1 right-1 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[8px] font-mono text-white">
